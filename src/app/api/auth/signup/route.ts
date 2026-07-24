@@ -18,8 +18,8 @@ const signupSchema = z.object({
 });
 
 /**
- * Autocadastro publico. A conta nasce PENDENTE e como FUNCIONARIO (menor
- * privilegio); quem aprova define o perfil real. Nao autentica ninguem aqui.
+ * Autocadastro público. A conta nasce PENDENTE como OPERADOR (menor privilégio);
+ * o administrador que a aprova define o perfil real.
  */
 export async function POST(request: Request) {
   try {
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
         email,
         phone: body.phone?.trim() || null,
         passwordHash: await hashPassword(body.password),
-        role: Role.FUNCIONARIO,
+        role: Role.OPERADOR,
         status: UserStatus.PENDENTE,
       },
     });
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     });
 
     return ok(
-      { message: "Solicitação enviada. Aguarde a aprovação de um coordenador." },
+      { message: "Solicitação enviada. Aguarde a aprovação de um administrador." },
       201,
     );
   } catch (error) {

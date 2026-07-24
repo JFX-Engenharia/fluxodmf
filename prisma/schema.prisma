@@ -13,9 +13,10 @@ datasource db {
 }
 
 enum Role {
-  FUNCIONARIO
+  OPERADOR
   GESTOR
-  COORDENADOR
+  APROVADOR
+  ADMINISTRADOR
 }
 
 enum UserStatus {
@@ -97,7 +98,7 @@ model User {
   username      String            @unique
   email         String            @unique
   passwordHash  String
-  role          Role              @default(FUNCIONARIO)
+  role          Role              @default(OPERADOR)
   status        UserStatus        @default(PENDENTE)
   phone         String?
   reviewedById  String?

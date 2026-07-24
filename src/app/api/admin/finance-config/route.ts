@@ -75,7 +75,7 @@ function clean(value: string | null | undefined) {
 
 export async function GET() {
   try {
-    await requireRole([Role.COORDENADOR]);
+    await requireRole([Role.ADMINISTRADOR]);
     const [works, approvalRules, tags, reasons, allocationRules] = await Promise.all([
       prisma.work.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
       prisma.approvalRule.findMany({
@@ -114,7 +114,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireRole([Role.COORDENADOR]);
+    const actor = await requireRole([Role.ADMINISTRADOR]);
     const body = bodySchema.parse(await request.json());
 
     if (body.action === "delete") {

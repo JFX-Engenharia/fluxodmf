@@ -56,8 +56,8 @@ const eventClass: Record<string, string> = {
 };
 
 /**
- * Achata o metadata em texto legivel. As alteracoes de usuario vem como
- * { campo: { de, para } }, que vira "perfil: FUNCIONARIO -> GESTOR".
+ * Achata o metadata em texto legível. As alterações de usuário vêm como
+ * { campo: { de, para } }, que vira "perfil: OPERADOR -> APROVADOR".
  */
 function describeMetadata(metadata: Record<string, unknown>): string[] {
   const parts: string[] = [];

@@ -320,7 +320,7 @@ export function PermissionsTab() {
             >
               <option value="">Definir depois</option>
               {users
-                .filter((item) => item.role === Role.GESTOR || item.role === Role.COORDENADOR)
+                .filter((item) => item.role === Role.GESTOR || item.role === Role.ADMINISTRADOR)
                 .map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name} ({roleLabels[item.role]})
@@ -375,7 +375,7 @@ export function PermissionsTab() {
                       >
                         <option value="">Não definido</option>
                         {users
-                          .filter((item) => item.role === Role.GESTOR || item.role === Role.COORDENADOR)
+                          .filter((item) => item.role === Role.GESTOR || item.role === Role.ADMINISTRADOR)
                           .map((item) => (
                             <option key={item.id} value={item.id}>
                               {item.name} ({roleLabels[item.role]})

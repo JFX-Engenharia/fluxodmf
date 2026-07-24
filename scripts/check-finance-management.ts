@@ -14,13 +14,14 @@ const payment = {
   tags: [{ tagId: "extra" }],
 };
 const rule = chooseApprovalRule(payment, [
-  { id: "value", minAmount: 5000.01, maxAmount: null, workId: null, category: null, tagId: null, requiredRole: Role.COORDENADOR, requiredApprovals: 1, preventSelfApproval: true, priority: 20 },
-  { id: "extra", minAmount: 0, maxAmount: null, workId: null, category: null, tagId: "extra", requiredRole: Role.COORDENADOR, requiredApprovals: 2, preventSelfApproval: true, priority: 100 },
+  { id: "value", minAmount: 5000.01, maxAmount: null, workId: null, category: null, tagId: null, requiredRole: Role.APROVADOR, requiredApprovals: 1, preventSelfApproval: true, priority: 20 },
+  { id: "extra", minAmount: 0, maxAmount: null, workId: null, category: null, tagId: "extra", requiredRole: Role.APROVADOR, requiredApprovals: 2, preventSelfApproval: true, priority: 100 },
 ]);
 assert.equal(rule?.id, "extra", "a tag extraordinária deve prevalecer pela prioridade");
 assert.equal(rule?.requiredApprovals, 2);
-assert.equal(roleAtLeast(Role.COORDENADOR, Role.GESTOR), true);
-assert.equal(roleAtLeast(Role.GESTOR, Role.COORDENADOR), false);
+assert.equal(roleAtLeast(Role.APROVADOR, Role.GESTOR), true);
+assert.equal(roleAtLeast(Role.GESTOR, Role.APROVADOR), false);
+assert.equal(roleAtLeast(Role.ADMINISTRADOR, Role.APROVADOR), true);
 
 const allocationRule = chooseAllocationRule(
   { category: "Administrativo", supplierName: "Escritório Central" },

@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   DailyFlowEventType,
   DailyFlowStatus,
+  Role,
 } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
@@ -71,6 +72,9 @@ export async function POST(request: Request) {
       eventType = DailyFlowEventType.ENVIADO_APROVACAO;
       auditEvent = "FLUXO_ENVIADO_APROVACAO";
     } else if (body.action === "close") {
+      if (actor.role !== Role.APROVADOR && actor.role !== Role.ADMINISTRADOR) {
+        throw new ApiError(403, "Somente um aprovador pode concluir o fluxo.");
+      }
       if (flow.status !== DailyFlowStatus.EM_APROVACAO) {
         throw new ApiError(409, "O fluxo precisa estar em aprovação antes de ser fechado.");
       }
@@ -85,7 +89,7 @@ export async function POST(request: Request) {
       auditEvent = "FLUXO_FECHADO";
     } else {
       if (!canAdminister(actor.role)) {
-        throw new ApiError(403, "Somente o coordenador pode reabrir um fechamento.");
+        throw new ApiError(403, "Somente o administrador pode reabrir um fechamento.");
       }
       if (flow.status !== DailyFlowStatus.FECHADO) {
         throw new ApiError(409, "Somente um fluxo fechado pode ser reaberto.");

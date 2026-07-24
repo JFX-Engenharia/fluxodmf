@@ -26,7 +26,7 @@ async function main() {
       username: `${suffix}-solicitante`,
       email: `${suffix}-solicitante@local.test`,
       passwordHash: "teste",
-      role: Role.FUNCIONARIO,
+      role: Role.OPERADOR,
       status: UserStatus.ATIVO,
     },
   });

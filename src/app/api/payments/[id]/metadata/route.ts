@@ -75,7 +75,7 @@ export async function POST(
             ? {
                 appliedApprovalRuleId: null,
                 requiredApprovals: 1,
-                requiredApprovalRole: Role.GESTOR,
+                requiredApprovalRole: Role.APROVADOR,
               }
             : {}),
         },

@@ -445,8 +445,8 @@ textarea:disabled {
   display: none;
 }
 
-/* Barra de manutencao (so coordenador). Fica acima do topbar, por isso .main
-   ganha uma terceira faixa no grid quando ela esta presente. */
+/* Barra de manutenção (só administrador). Fica acima do topbar, por isso .main
+   ganha uma terceira faixa no grid quando ela está presente. */
 .main.has-banner {
   grid-template-rows: auto auto 1fr;
 }
@@ -1779,8 +1779,7 @@ button,
 
 .journey-list li > span,
 .empty-state-icon,
-.import-icon,
-.secondary-tool-icon {
+.import-icon {
   width: 42px;
   height: 42px;
   display: grid;
@@ -1915,9 +1914,6 @@ button,
   font-size: 18px;
 }
 
-.import-name-field {
-  width: 100%;
-}
 
 .selected-file {
   grid-column: 2 / 4;
@@ -1936,57 +1932,50 @@ button,
   justify-content: flex-end;
 }
 
-.secondary-tool {
-  overflow: hidden;
+.import-box.import-conversion {
+  grid-template-columns: minmax(0, 560px);
+  justify-content: center;
+  justify-items: center;
+  text-align: center;
 }
 
-.secondary-tool summary {
+.import-conversion .import-copy {
+  justify-items: center;
+}
+
+.import-conversion .import-copy > strong {
+  font-size: clamp(24px, 3vw, 32px);
+}
+
+
+.import-drop-zone {
+  width: min(100%, 440px);
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 16px 18px;
+  justify-items: center;
+  gap: 6px;
+  padding: 20px;
+  border: 2px dashed #bda4e6;
+  border-radius: 14px;
+  color: var(--primary-strong);
+  background: rgba(139, 91, 227, 0.05);
   cursor: pointer;
-  list-style: none;
 }
 
-.secondary-tool summary::-webkit-details-marker {
-  display: none;
+.import-drop-zone:focus-visible {
+  outline: 3px solid rgba(139, 91, 227, 0.35);
+  outline-offset: 3px;
 }
 
-.secondary-tool summary > span:nth-child(2) {
-  display: grid;
-  gap: 3px;
-}
-
-.secondary-tool summary small {
+.import-drop-zone small {
   color: var(--muted);
 }
 
-.secondary-tool-action {
-  color: var(--primary);
-  font-size: 12px;
-  font-weight: 700;
+.import-conversion-actions {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
-.secondary-tool-action .when-open,
-.secondary-tool[open] .secondary-tool-action .when-closed {
-  display: none;
-}
-
-.secondary-tool[open] .secondary-tool-action .when-open {
-  display: inline;
-}
-
-.secondary-tool-content {
-  padding: 18px;
-  border-top: 1px solid var(--line);
-  background: #fcfbfe;
-}
-
-.secondary-tool-content p {
-  margin: 0;
-}
 
 .file-box {
   position: relative;
@@ -2018,10 +2007,9 @@ button,
     grid-template-columns: auto 1fr;
   }
 
-  .import-name-field,
-  .import-actions {
-    grid-column: 2;
-  }
+.import-actions {
+  grid-column: 2;
+}
 
   .selected-file {
     grid-column: 2;
@@ -2053,11 +2041,10 @@ button,
     padding: 22px;
   }
 
-  .import-icon,
-  .import-copy,
-  .import-name-field,
-  .import-actions,
-  .selected-file {
+.import-icon,
+.import-copy,
+.import-actions,
+.selected-file {
     grid-column: 1;
   }
 
@@ -2072,13 +2059,6 @@ button,
     min-height: 46px;
   }
 
-  .secondary-tool summary {
-    grid-template-columns: auto 1fr;
-  }
-
-  .secondary-tool-action {
-    display: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
