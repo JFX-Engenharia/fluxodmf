@@ -195,7 +195,7 @@ export function PanelShell() {
   const requestedTab = searchParams.get("tab");
 
   /**
-   * A aba vem da URL, mas o perfil manda: pedir ?tab=usuarios sendo funcionario
+   * A aba vem da URL, mas o perfil manda: pedir ?tab=usuarios sendo operador
    * cai na primeira aba permitida. As rotas de API revalidam de qualquer jeito.
    */
   const activeTab: TabId | null = useMemo(() => {
@@ -235,7 +235,7 @@ export function PanelShell() {
 
   const current = tabDefinitions.find((tab) => tab.id === activeTab) ?? tabDefinitions[0];
   const ActiveComponent = current.Component;
-  const isCoordinator = user.role === Role.COORDENADOR;
+  const isCoordinator = user.role === Role.ADMINISTRADOR;
 
   return (
     <PanelContext.Provider value={{ user, tabs, goToTab }}>

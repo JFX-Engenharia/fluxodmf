@@ -8,13 +8,18 @@ import {
   Upload,
   Wand2,
 } from "lucide-react";
-import { ChangeEvent, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useRef, useState } from "react";
 import { Money } from "@/components/Money";
 import { money, shortDate } from "@/lib/format";
 import type { FlowConversion } from "@/lib/flow-converter";
 import type { ImportPreview } from "@/types";
 
+import { usePanel } from "@/components/panel/PanelContext";
+
+type ImportStep = "convert" | "import" | "flow";
+
 type ConfirmResponse = {
+  flowId?: string;
   flowName?: string;
   importedRows?: number;
   skippedRows?: number;
@@ -23,14 +28,22 @@ type ConfirmResponse = {
   error?: string;
 };
 
+type CreatedFlow = {
+  id: string;
+  name: string;
+  importedRows: number;
+  importedContributions: number;
+  status: "RASCUNHO" | "EM_APROVACAO";
+};
+
 export function ImportTab() {
+  const { goToTab } = usePanel();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [importName, setImportName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Conversor do export bruto do Conta Azul.
@@ -40,6 +53,9 @@ export function ImportTab() {
   const [converting, setConverting] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const rawInputRef = useRef<HTMLInputElement>(null);
+  const [step, setStep] = useState<ImportStep>("convert");
+  const [createdFlow, setCreatedFlow] = useState<CreatedFlow | null>(null);
+  const [sendingFlow, setSendingFlow] = useState(false);
 
   function reset() {
     setPreview(null);
@@ -47,9 +63,18 @@ export function ImportTab() {
     setError("");
   }
 
-  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setFile(event.target.files?.[0] ?? null);
+  function selectRefinedFile(file: File | null) {
+    setFile(file);
     reset();
+  }
+
+  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+    selectRefinedFile(event.target.files?.[0] ?? null);
+  }
+
+  function onRefinedFileDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    selectRefinedFile(event.dataTransfer.files[0] ?? null);
   }
 
   async function previewFile() {
@@ -81,12 +106,21 @@ export function ImportTab() {
     }
   }
 
-  function onRawFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setRawFile(event.target.files?.[0] ?? null);
+  function selectRawFile(file: File | null) {
+    setRawFile(file);
     setConversion(null);
     setAportes({});
     setError("");
     setMessage("");
+  }
+
+  function onRawFileChange(event: ChangeEvent<HTMLInputElement>) {
+    selectRawFile(event.target.files?.[0] ?? null);
+  }
+
+  function onRawFileDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    selectRawFile(event.dataTransfer.files[0] ?? null);
   }
 
   /** Le a planilha bruta e mostra o que sairia, sem gerar o arquivo ainda: os
@@ -161,13 +195,40 @@ export function ImportTab() {
       anchor.click();
       URL.revokeObjectURL(url);
 
-      setMessage(
-        `${conversion.suggestedFileName} gerado. Envie esse arquivo no campo de importação acima.`,
-      );
+      setStep("import");
+      setMessage(`${conversion.suggestedFileName} gerado. Importe a planilha refinada a seguir.`);
     } catch {
       setError("Falha de conexão ao gerar a planilha de fluxo.");
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function sendCreatedFlow() {
+    if (!createdFlow) return;
+
+    setSendingFlow(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/daily-flows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flowId: createdFlow.id, action: "start_approval" }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error ?? "Não foi possível enviar o fluxo para aprovação.");
+        return;
+      }
+
+      setCreatedFlow({ ...createdFlow, status: "EM_APROVACAO" });
+      setMessage("Fluxo enviado para aprovação.");
+    } catch {
+      setError("Falha de conexão ao enviar o fluxo para aprovação.");
+    } finally {
+      setSendingFlow(false);
     }
   }
 
@@ -184,7 +245,6 @@ export function ImportTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fileName: preview.fileName,
-          importName,
           totalRows: preview.totalRows,
           rows: preview.rows,
           contributions: preview.contributions,
@@ -198,19 +258,24 @@ export function ImportTab() {
         return;
       }
 
-      const parts = [`${data.importedRows ?? 0} pagamento(s) importado(s)`];
-      if (data.importedContributions) parts.push(`${data.importedContributions} aporte(s)`);
-      if (data.skippedRows) parts.push(`${data.skippedRows} já existia(m) e foi(ram) ignorado(s)`);
-      if (data.createdAccounts?.length) {
-        parts.push(`contas criadas: ${data.createdAccounts.join(", ")}`);
+
+      if (!data.flowId || !data.flowName) {
+        setError("A importação foi concluída, mas o fluxo não pôde ser aberto.");
+        return;
       }
 
       setPreview(null);
       setFile(null);
-      setImportName("");
       if (fileInputRef.current) fileInputRef.current.value = "";
 
-      setMessage(`${data.flowName ? `${data.flowName}: ` : ""}${parts.join(", ")}.`);
+      setCreatedFlow({
+        id: data.flowId,
+        name: data.flowName,
+        importedRows: data.importedRows ?? 0,
+        importedContributions: data.importedContributions ?? 0,
+        status: "RASCUNHO",
+      });
+      setStep("flow");
     } catch {
       setError("Falha de conexão ao confirmar o lote.");
     } finally {
@@ -227,141 +292,161 @@ export function ImportTab() {
       <section className="import-center" aria-label="Importar arquivo de pagamentos">
         <div className="import-workspace">
           <ol className="process-steps" aria-label="Etapas da importação">
-            <li className="active"><span>1</span><strong>Selecionar</strong><small>CSV ou XLSX</small></li>
-            <li><span>2</span><strong>Validar</strong><small>Linhas e aportes</small></li>
-            <li><span>3</span><strong>Confirmar</strong><small>Criar o fluxo</small></li>
+            <li className={step === "convert" ? "active" : ""}><span>1</span><strong>Converter</strong><small>Arquivo bruto</small></li>
+            <li className={step === "import" ? "active" : ""}><span>2</span><strong>Importar</strong><small>Planilha refinada</small></li>
+            <li className={step === "flow" ? "active" : ""}><span>3</span><strong>Pré-visualizar</strong><small>Enviar fluxo</small></li>
           </ol>
 
-          <div className="import-box">
-            <span className="import-icon" aria-hidden="true">
-              <FileSpreadsheet size={30} />
-            </span>
-            <div className="import-copy">
-              <span className="eyebrow">PASSO 1 DE 3</span>
-              <strong>Selecione a planilha do dia</strong>
-              <span className="muted">
-                CSV ou XLSX com fornecedor, data, descrição, valor e centro de custo.
-              </span>
-            </div>
-            {file ? <span className="selected-file import-file-name">{file.name}</span> : null}
-            <input
-              ref={fileInputRef}
-              className="visually-hidden"
-              id="file"
-              type="file"
-              accept=".csv,.xlsx"
-              aria-label="Planilha de fluxo para importar"
-              onChange={onFileChange}
-            />
-            <div className="button-row import-actions">
-              <button
-                className="button"
-                type="button"
-                onClick={() => (file ? void previewFile() : fileInputRef.current?.click())}
-                disabled={loading}
+          {step === "convert" ? (
+            <div className="import-box import-conversion">
+              <span className="import-icon" aria-hidden="true"><Wand2 size={34} /></span>
+              <div className="import-copy">
+                <span className="eyebrow">ETAPA 1 DE 3</span>
+                <strong>Conversão do arquivo bruto</strong>
+                <span className="muted">Converta o export Visão Contas a Pagar do Conta Azul para o modelo de fluxo.</span>
+              </div>
+              <input
+                ref={rawInputRef}
+                className="visually-hidden"
+                id="raw-file"
+                type="file"
+                accept=".csv,.xls,.xlsx"
+                aria-label="Planilha bruta do Conta Azul para converter"
+                onChange={onRawFileChange}
+              />
+              <div
+                className="import-drop-zone"
+                role="button"
+                tabIndex={0}
+                onClick={() => rawInputRef.current?.click()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    rawInputRef.current?.click();
+                  }
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={onRawFileDrop}
               >
-                <Upload size={16} />
-                {loading ? "Lendo..." : file ? "Gerar prévia" : "Selecionar arquivo"}
-              </button>
-              {file ? (
+                <Upload size={20} aria-hidden="true" />
+                <strong>{rawFile ? rawFile.name : "Arraste a planilha bruta e solte aqui"}</strong>
+                <small>ou selecione o arquivo abaixo · CSV, XLS ou XLSX</small>
+              </div>
+              <div className="button-row import-actions import-conversion-actions">
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => (rawFile ? void convertPreview() : rawInputRef.current?.click())}
+                  disabled={converting}
+                >
+                  <Wand2 size={16} />
+                  {converting ? "Lendo..." : rawFile ? "Ler arquivo bruto" : "Selecionar arquivo bruto"}
+                </button>
                 <button
                   className="button secondary"
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => {
+                    setError("");
+                    setMessage("");
+                    setStep("import");
+                  }}
+                >
+                  Já tenho a planilha refinada
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "import" ? (
+            <div className="import-box import-conversion import-refined">
+              <span className="import-icon" aria-hidden="true"><FileSpreadsheet size={34} /></span>
+              <div className="import-copy">
+                <span className="eyebrow">ETAPA 2 DE 3</span>
+                <strong>Importação da planilha refinada</strong>
+                <span className="muted">Envie o arquivo com fornecedor, data, descrição, valor e centro de custo.</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                className="visually-hidden"
+                id="file"
+                type="file"
+                accept=".csv,.xlsx"
+                aria-label="Planilha refinada para importar"
+                onChange={onFileChange}
+              />
+              <div
+                className="import-drop-zone"
+                role="button"
+                tabIndex={0}
+                onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={onRefinedFileDrop}
+              >
+                <Upload size={20} aria-hidden="true" />
+                <strong>{file ? file.name : "Arraste a planilha refinada e solte aqui"}</strong>
+                <small>ou selecione o arquivo abaixo · CSV ou XLSX</small>
+              </div>
+              <div className="button-row import-actions import-conversion-actions">
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => (file ? void previewFile() : fileInputRef.current?.click())}
                   disabled={loading}
                 >
-                  Trocar arquivo
+                  <Upload size={16} />
+                  {loading ? "Lendo..." : file ? "Gerar prévia" : "Selecionar planilha refinada"}
                 </button>
-              ) : null}
+                <button className="button secondary" type="button" onClick={() => setStep("convert")} disabled={loading}>
+                  Voltar para conversão
+                </button>
+              </div>
             </div>
-          </div>
+          ) : null}
+
+          {step === "flow" && createdFlow ? (
+            <div className="import-box">
+              <span className="import-icon" aria-hidden="true"><CheckCircle2 size={30} /></span>
+              <div className="import-copy">
+                <span className="eyebrow">ETAPA 3 DE 3</span>
+                <strong>{createdFlow.name}</strong>
+                <span className="muted">{createdFlow.importedRows} pagamento(s) e {createdFlow.importedContributions} aporte(s) importados.</span>
+              </div>
+              <span className={`status ${createdFlow.status === "RASCUNHO" ? "PENDENTE" : "APROVADO"}`}>
+                {createdFlow.status === "RASCUNHO" ? "Rascunho" : "Em aprovação"}
+              </span>
+              <div className="button-row import-actions">
+                {createdFlow.status === "RASCUNHO" ? (
+                  <button className="button" type="button" onClick={() => void sendCreatedFlow()} disabled={sendingFlow}>
+                    {sendingFlow ? "Enviando..." : "Enviar para aprovação"}
+                  </button>
+                ) : null}
+                <button className="button secondary" type="button" onClick={() => goToTab("pagamentos")}>
+                  Ver fluxo
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
 
-      <details className="secondary-tool panel">
-        <summary>
-          <span className="secondary-tool-icon" aria-hidden="true"><Wand2 size={18} /></span>
-          <span>
-            <strong>Precisa converter o arquivo bruto do Conta Azul?</strong>
-            <small>Abra a ferramenta auxiliar para gerar uma planilha compatível.</small>
-          </span>
-          <span className="secondary-tool-action">
-            <span className="when-closed">Abrir</span>
-            <span className="when-open">Fechar</span>
-          </span>
-        </summary>
-
-        <div className="secondary-tool-content form-grid">
-          <p className="muted">
-            Transforma o export bruto <strong>Visão Contas a Pagar</strong> do Conta Azul no
-            modelo <strong>FLUXO DE PAGAMENTOS JFX</strong>. O arquivo bruto não entra direto na
-            importação: os nomes das colunas não batem.
-          </p>
-          <div className="field">
-            <label htmlFor="import-name">Nome do fluxo gerado</label>
-            <input
-              className="input"
-              id="import-name"
-              value={importName}
-              onChange={(event) => setImportName(event.target.value)}
-              placeholder={`FLUXO DE PAGAMENTOS ${new Intl.DateTimeFormat("pt-BR", {
-                day: "2-digit",
-                month: "2-digit",
-              })
-                .format(new Date())
-                .replace("/", ".")}`}
-              maxLength={120}
-            />
-            <small className="muted">Opcional. O nome será usado ao importar a planilha convertida.</small>
-          </div>
-
-          {rawFile ? <span className="muted import-file-name">{rawFile.name}</span> : null}
-
-          <input
-            ref={rawInputRef}
-            className="visually-hidden"
-            id="raw-file"
-            type="file"
-            accept=".csv,.xls,.xlsx"
-            aria-label="Planilha bruta do Conta Azul para converter"
-            onChange={onRawFileChange}
-          />
-
-          <div className="button-row">
-            <button
-              className="button"
-              type="button"
-              onClick={() => (rawFile ? void convertPreview() : rawInputRef.current?.click())}
-              disabled={converting}
-            >
-              <Wand2 size={16} />
-              {converting ? "Lendo..." : rawFile ? "Ler planilha bruta" : "Selecionar planilha bruta"}
-            </button>
-            {rawFile ? (
-              <button
-                className="button secondary"
-                type="button"
-                onClick={() => rawInputRef.current?.click()}
-                disabled={converting}
-              >
-                Trocar
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </details>
 
       {error ? <div className="alert error" role="alert">{error}</div> : null}
       {message ? <div className="alert success" role="status">{message}</div> : null}
 
-      {conversion?.missingColumns.length ? (
+      {step === "convert" && conversion?.missingColumns.length ? (
         <div className="alert error" role="alert">
           Colunas obrigatórias não encontradas na planilha bruta:{" "}
           {conversion.missingColumns.join(", ")}.
         </div>
       ) : null}
 
-      {conversion && !conversion.missingColumns.length ? (
+      {step === "convert" && conversion && !conversion.missingColumns.length ? (
         <section className="section">
           <div className="section-header">
             <h2>Fluxo a gerar</h2>
@@ -458,13 +543,13 @@ export function ImportTab() {
         </section>
       ) : null}
 
-      {preview?.missingColumns.length ? (
+      {step === "import" && preview?.missingColumns.length ? (
         <div className="alert error" role="alert">
           Colunas obrigatórias não encontradas: {preview.missingColumns.join(", ")}.
         </div>
       ) : null}
 
-      {preview?.newAccounts.length ? (
+      {step === "import" && preview?.newAccounts.length ? (
         <div className="alert">
           <strong>
             {preview.newAccounts.length} centro(s) de custo novo(s) — a conta será criada na
@@ -474,7 +559,7 @@ export function ImportTab() {
         </div>
       ) : null}
 
-      {preview ? (
+      {step === "import" && preview ? (
         <>
           <section className="stats-grid">
             <div className="stat">
@@ -567,7 +652,7 @@ export function ImportTab() {
 
           <section className="section">
             <div className="section-header">
-              <h2>Prévia do lote</h2>
+              <h2>Prévia do fluxo importado</h2>
               <div className="button-row">
                 <button
                   className="button success"
@@ -576,7 +661,7 @@ export function ImportTab() {
                   disabled={preview.validRows === 0 || confirming}
                 >
                   <CheckCircle2 size={16} />
-                  {confirming ? "Confirmando..." : `Confirmar ${preview.validRows} linha(s)`}
+                  {confirming ? "Importando..." : `Importar ${preview.validRows} linha(s)`}
                 </button>
               </div>
             </div>

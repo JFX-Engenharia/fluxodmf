@@ -45,12 +45,12 @@ async function assertResponsibleUser(id: string | null | undefined) {
     where: {
       id,
       status: UserStatus.ATIVO,
-      role: { in: [Role.GESTOR, Role.COORDENADOR] },
+      role: { in: [Role.GESTOR, Role.ADMINISTRADOR] },
     },
     select: { id: true },
   });
   if (!user) {
-    throw new ApiError(400, "O responsável precisa ser um gestor ou coordenador ativo.");
+    throw new ApiError(400, "O responsável precisa ser um gestor ou administrador ativo.");
   }
 }
 

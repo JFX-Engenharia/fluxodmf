@@ -110,7 +110,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Criado pelo coordenador ja nasce ATIVO: nao ha o que aprovar.
+    // Criado pelo administrador já nasce ATIVO: não há o que aprovar.
     const user = await prisma.user.create({
       data: {
         name: body.name.trim(),
@@ -149,18 +149,18 @@ export async function PATCH(request: Request) {
     const current = await prisma.user.findUnique({ where: { id: body.id } });
     if (!current) throw new ApiError(404, "Usuário não encontrado.");
 
-    // Sem esta trava, o ultimo coordenador poderia se rebaixar ou se desativar
-    // e deixar o sistema sem ninguem capaz de gerenciar usuarios.
+    // Sem esta trava, o último administrador poderia se rebaixar ou se desativar
+    // e deixar o sistema sem ninguém capaz de gerenciar usuários.
     const losingAdmin =
-      current.role === Role.COORDENADOR &&
+      current.role === Role.ADMINISTRADOR &&
       current.status === UserStatus.ATIVO &&
-      ((body.role !== undefined && body.role !== Role.COORDENADOR) ||
+      ((body.role !== undefined && body.role !== Role.ADMINISTRADOR) ||
         (body.status !== undefined && body.status !== UserStatus.ATIVO));
 
     if (losingAdmin) {
       const remaining = await prisma.user.count({
         where: {
-          role: Role.COORDENADOR,
+          role: Role.ADMINISTRADOR,
           status: UserStatus.ATIVO,
           id: { not: current.id },
         },
@@ -169,7 +169,7 @@ export async function PATCH(request: Request) {
       if (remaining === 0) {
         throw new ApiError(
           400,
-          "Este é o único coordenador ativo. Promova outro antes de alterar este.",
+          "Este é o único administrador ativo. Promova outro antes de alterar este.",
         );
       }
     }
@@ -256,16 +256,16 @@ export async function DELETE(request: Request) {
     const target = await prisma.user.findUnique({ where: { id: body.id } });
     if (!target) throw new ApiError(404, "Usuário não encontrado.");
 
-    if (target.role === Role.COORDENADOR && target.status === UserStatus.ATIVO) {
+    if (target.role === Role.ADMINISTRADOR && target.status === UserStatus.ATIVO) {
       const remaining = await prisma.user.count({
         where: {
-          role: Role.COORDENADOR,
+          role: Role.ADMINISTRADOR,
           status: UserStatus.ATIVO,
           id: { not: target.id },
         },
       });
       if (remaining === 0) {
-        throw new ApiError(400, "Este é o único coordenador ativo e não pode ser excluído.");
+        throw new ApiError(400, "Este é o único administrador ativo e não pode ser excluído.");
       }
     }
 

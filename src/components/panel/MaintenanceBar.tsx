@@ -18,9 +18,9 @@ function hourLabel(value: string) {
 }
 
 /**
- * Barra de manutencao do painel, visivel apenas para coordenadores (o
- * PanelShell so a renderiza para esse perfil). O toggle liga/desliga o aviso e,
- * quando ligado, mostra quem sinalizou a manutencao e desde quando.
+ * Barra de manutenção do painel, visível apenas para administradores (o
+ * PanelShell só a renderiza para esse perfil). O toggle liga/desliga o aviso e,
+ * quando ligado, mostra quem sinalizou a manutenção e desde quando.
  */
 export function MaintenanceBar() {
   const [notice, setNotice] = useState<MaintenanceNotice | null>(null);

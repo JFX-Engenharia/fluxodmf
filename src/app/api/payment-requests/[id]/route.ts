@@ -27,7 +27,7 @@ export async function PATCH(
       throw new ApiError(409, "Esta solicitação já foi decidida.");
     }
 
-    const isCoordinator = actor.role === Role.COORDENADOR;
+    const isCoordinator = actor.role === Role.ADMINISTRADOR;
     const isResponsible = paymentRequest.work.responsibleUserId === actor.id;
     if (body.action === "cancel") {
       if (paymentRequest.requestedById !== actor.id && !isCoordinator) {

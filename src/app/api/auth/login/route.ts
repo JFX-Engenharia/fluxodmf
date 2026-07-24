@@ -17,9 +17,9 @@ const loginSchema = z.object({
 
 /** Mensagens por status, para o usuario pendente entender que falta aprovacao. */
 const statusMessages: Record<Exclude<UserStatus, "ATIVO">, string> = {
-  PENDENTE: "Seu acesso ainda está aguardando aprovação de um coordenador.",
+  PENDENTE: "Seu acesso ainda está aguardando aprovação de um administrador.",
   RECUSADO: "Sua solicitação de acesso foi recusada.",
-  INATIVO: "Seu acesso foi desativado. Procure um coordenador.",
+  INATIVO: "Seu acesso foi desativado. Procure um administrador.",
 };
 
 export async function POST(request: NextRequest) {

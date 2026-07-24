@@ -25,8 +25,8 @@ function serialize(notice: NoticeRecord | null) {
 
 export async function GET() {
   try {
-    // So o coordenador enxerga a barra de manutencao, entao so ele le o estado.
-    await requireRole([Role.COORDENADOR]);
+    // Só o administrador enxerga a barra de manutenção, então só ele lê o estado.
+    await requireRole([Role.ADMINISTRADOR]);
     const notice = await prisma.maintenanceNotice.findUnique({
       where: { id: SINGLETON_ID },
     });
@@ -38,7 +38,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireRole([Role.COORDENADOR]);
+    const actor = await requireRole([Role.ADMINISTRADOR]);
     const { active } = toggleSchema.parse(await request.json());
 
     // Ligar grava quem sinalizou e o horario; desligar limpa esses campos para

@@ -7,9 +7,10 @@ export { Role };
  * consultam este modulo, para que esconder uma aba e bloquear o endpoint
  * correspondente nunca saiam de sincronia.
  *
- * Funcionario  -> Painel.
- * Gestor       -> Painel + Operacao.
- * Coordenador  -> acesso total, incluindo areas criticas (usuarios, permissoes, logs).
+ * Operador      -> painel, importação e conciliação.
+ * Gestor        -> operação financeira.
+ * Aprovador     -> aprova pagamentos e fecha fluxos.
+ * Administrador -> acesso total, incluindo áreas críticas (usuários, permissões e logs).
  */
 export const TAB_IDS = [
   "dashboard",
@@ -27,9 +28,14 @@ export const TAB_IDS = [
 
 export type TabId = (typeof TAB_IDS)[number];
 
-const ALL_ROLES: Role[] = [Role.FUNCIONARIO, Role.GESTOR, Role.COORDENADOR];
-const MANAGEMENT: Role[] = [Role.GESTOR, Role.COORDENADOR];
-const CRITICAL: Role[] = [Role.COORDENADOR];
+const ALL_ROLES: Role[] = [
+  Role.OPERADOR,
+  Role.GESTOR,
+  Role.APROVADOR,
+  Role.ADMINISTRADOR,
+];
+const MANAGEMENT: Role[] = [Role.GESTOR, Role.APROVADOR, Role.ADMINISTRADOR];
+const CRITICAL: Role[] = [Role.ADMINISTRADOR];
 
 export const tabRoles: Record<TabId, Role[]> = {
   dashboard: ALL_ROLES,
@@ -63,19 +69,22 @@ export function canEditPayments(role: Role) {
   return MANAGEMENT.includes(role);
 }
 
+
 /** Gerenciar usuarios, perfis e ver auditoria. */
 export function canAdminister(role: Role) {
   return CRITICAL.includes(role);
 }
 
 export const roleLabels: Record<Role, string> = {
-  FUNCIONARIO: "Funcionário",
+  OPERADOR: "Operador",
   GESTOR: "Gestor",
-  COORDENADOR: "Coordenador",
+  APROVADOR: "Aprovador",
+  ADMINISTRADOR: "Administrador",
 };
 
 export const roleDescriptions: Record<Role, string> = {
-  FUNCIONARIO: "Acessa o painel, solicita pagamentos e faz a conciliação.",
-  GESTOR: "Acessa o painel e a operação de pagamentos.",
-  COORDENADOR: "Acesso total, incluindo usuários, permissões e logs.",
+  OPERADOR: "Acessa o painel, importa planilhas, solicita pagamentos e faz a conciliação.",
+  GESTOR: "Opera pagamentos e adiantamentos.",
+  APROVADOR: "Aprova pagamentos e fecha fluxos em aprovação.",
+  ADMINISTRADOR: "Acesso total, incluindo usuários, permissões e logs.",
 };

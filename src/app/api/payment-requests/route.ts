@@ -79,7 +79,7 @@ export async function GET() {
   try {
     const actor = await requireUser();
     const where =
-      actor.role === Role.COORDENADOR
+      actor.role === Role.ADMINISTRADOR
         ? {}
         : {
             OR: [
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       include: { responsibleUser: { select: { id: true, status: true } } },
     });
     if (!work?.active) throw new ApiError(404, "Obra não encontrada ou inativa.");
-    if (actor.role !== Role.COORDENADOR && !actor.works.some(({ work: assignedWork }) => assignedWork.id === work.id)) {
+    if (actor.role !== Role.ADMINISTRADOR && !actor.works.some(({ work: assignedWork }) => assignedWork.id === work.id)) {
       throw new ApiError(403, "Você só pode solicitar pagamentos para obras vinculadas a você.");
     }
     if (!work.responsibleUser || work.responsibleUser.status !== UserStatus.ATIVO) {

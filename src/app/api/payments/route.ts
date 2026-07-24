@@ -11,7 +11,7 @@ function parseDateParam(value: string | null, endOfDay = false) {
 
 export async function GET(request: Request) {
   try {
-    // Gestor e coordenador enxergam todas as contas; funcionário não entra aqui.
+    // Gestor, aprovador e administrador enxergam todas as contas; operador não entra aqui.
     await requireTab("pagamentos");
 
     const url = new URL(request.url);

@@ -53,7 +53,7 @@ export async function POST(
       throw new ApiError(403, "Seu perfil não tem permissão para agir sobre pagamentos.");
     }
     if (CRITICAL_ACTIONS.includes(body.action) && !canAdminister(user.role)) {
-      throw new ApiError(403, "Somente o coordenador pode cancelar ou reabrir pagamentos.");
+      throw new ApiError(403, "Somente o administrador pode cancelar ou reabrir pagamentos.");
     }
 
     const payment = await prisma.payment.findUnique({
@@ -158,7 +158,7 @@ export async function POST(
           lockedPayment.appliedApprovalRule ?? chooseApprovalRule(lockedPayment, activeRules);
         approvalRuleId = rule?.id ?? null;
         requiredApprovals = rule?.requiredApprovals ?? 1;
-        requiredApprovalRole = rule?.requiredRole ?? Role.GESTOR;
+        requiredApprovalRole = rule?.requiredRole ?? Role.APROVADOR;
         const preventSelfApproval = rule?.preventSelfApproval ?? true;
 
         if (preventSelfApproval && lockedPayment.createdById === user.id) {
@@ -167,8 +167,8 @@ export async function POST(
         if (!roleAtLeast(user.role, requiredApprovalRole)) {
           throw new ApiError(
             403,
-            requiredApprovalRole === Role.COORDENADOR
-              ? "Este pagamento exige aprovação de coordenador."
+            requiredApprovalRole === Role.ADMINISTRADOR
+              ? "Este pagamento exige aprovação de administrador."
               : "Seu perfil não atende à alçada deste pagamento.",
           );
         }
@@ -212,7 +212,7 @@ export async function POST(
           currentDueDate: newDueDate ?? undefined,
           appliedApprovalRuleId: body.action === "approve" ? approvalRuleId : null,
           requiredApprovals: body.action === "approve" ? requiredApprovals : 1,
-          requiredApprovalRole: body.action === "approve" ? requiredApprovalRole : Role.GESTOR,
+          requiredApprovalRole: body.action === "approve" ? requiredApprovalRole : Role.APROVADOR,
         },
         include: {
           work: true,

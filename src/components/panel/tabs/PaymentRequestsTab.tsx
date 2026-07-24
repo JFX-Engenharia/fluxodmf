@@ -46,14 +46,14 @@ export function PaymentRequestsTab() {
   const works = useMemo(
     () =>
       (worksData?.works ?? []).filter(
-        (work) => work.active && (user.role === Role.COORDENADOR || user.works.some((assignedWork) => assignedWork.id === work.id)),
+        (work) => work.active && (user.role === Role.ADMINISTRADOR || user.works.some((assignedWork) => assignedWork.id === work.id)),
       ),
     [user.role, user.works, worksData?.works],
   );
   const pendingReview = (data?.requests ?? []).filter(
     (paymentRequest) =>
       paymentRequest.status === "PENDENTE" &&
-      (user.role === Role.COORDENADOR || paymentRequest.work.responsible?.id === user.id),
+      (user.role === Role.ADMINISTRADOR || paymentRequest.work.responsible?.id === user.id),
   );
 
   async function submit(event: FormEvent) {

@@ -11,9 +11,10 @@ export function numberValue(value: NumberLike | null | undefined) {
 }
 
 const roleRank: Record<Role, number> = {
-  [Role.FUNCIONARIO]: 0,
+  [Role.OPERADOR]: 0,
   [Role.GESTOR]: 1,
-  [Role.COORDENADOR]: 2,
+  [Role.APROVADOR]: 2,
+  [Role.ADMINISTRADOR]: 3,
 };
 
 export function roleAtLeast(actual: Role, required: Role) {

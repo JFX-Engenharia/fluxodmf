@@ -21,7 +21,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { usePanel } from "@/components/panel/PanelContext";
 import { useFetchData } from "@/components/panel/useFetchData";
 import { dateTime, money, shortDate, statusLabels } from "@/lib/format";
-import { canAdminister } from "@/lib/permissions";
+import { canAdminister, Role } from "@/lib/permissions";
 
 type StatusKey = keyof typeof statusLabels;
 
@@ -39,7 +39,7 @@ type Payment = {
   hasReceipt: boolean;
   receiptReceivedAt?: string | null;
   requiredApprovals: number;
-  requiredApprovalRole: "GESTOR" | "COORDENADOR";
+  requiredApprovalRole: "GESTOR" | "APROVADOR" | "ADMINISTRADOR";
   approvals?: Array<{ id: string; createdAt: string; actor: { id: string; name: string; role: string } }>;
   tags?: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
   allocations?: Array<{ workId: string; percentage: number; amount: number; work: { id: string; name: string } }>;
@@ -148,6 +148,8 @@ type BatchResult = { done: number; failed: { supplier: string; error: string }[]
 export function PaymentsTab() {
   const { user, goToTab } = usePanel();
   const isCoordinator = canAdminister(user.role);
+  const canConcludeFlow =
+    user.role === Role.APROVADOR || user.role === Role.ADMINISTRADOR;
 
   const [selectedId, setSelectedId] = useState("");
   const [status, setStatus] = useState<"" | StatusKey>("PENDENTE");
@@ -485,7 +487,7 @@ export function PaymentsTab() {
                   Enviar para aprovação
                 </button>
               ) : null}
-              {selectedFlow.status === "EM_APROVACAO" ? (
+              {selectedFlow.status === "EM_APROVACAO" && canConcludeFlow ? (
                 <button
                   className="button success"
                   type="button"
@@ -494,11 +496,11 @@ export function PaymentsTab() {
                   title={
                     selectedFlow.summary.undecidedCount > 0
                       ? `Ainda existem ${selectedFlow.summary.undecidedCount} pagamento(s) aguardando decisão`
-                      : "Fechar e bloquear o fluxo diário"
+                      : "Aprovar e bloquear o fluxo diário"
                   }
                 >
                   <LockKeyhole size={16} />
-                  Fechar fluxo
+                  Aprovar e fechar fluxo
                 </button>
               ) : null}
               {selectedFlow.status === "FECHADO" ? (
@@ -1017,7 +1019,7 @@ export function PaymentsTab() {
                 <option value="approve">Aprovar os {batchPayments.length}</option>
                 <option value="reject">Reprovar os {batchPayments.length}</option>
                 <option value="transfer">Alterar a data dos {batchPayments.length}</option>
-                {/* Voltar para em aberto e critico: a rota so aceita do coordenador. */}
+                {/* Voltar para em aberto é crítico: a rota só aceita do administrador. */}
                 {isCoordinator ? (
                   <option value="reopen">Voltar os {batchPayments.length} para em aberto</option>
                 ) : null}

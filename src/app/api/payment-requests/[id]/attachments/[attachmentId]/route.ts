@@ -23,7 +23,7 @@ export async function GET(
     if (!attachment) throw new ApiError(404, "Anexo não encontrado.");
 
     const canRead =
-      actor.role === Role.COORDENADOR ||
+      actor.role === Role.ADMINISTRADOR ||
       attachment.request.requestedById === actor.id ||
       attachment.request.work.responsibleUserId === actor.id;
     if (!canRead) throw new ApiError(403, "Você não pode acessar este anexo.");

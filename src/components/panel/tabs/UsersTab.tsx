@@ -42,7 +42,7 @@ const emptyForm = {
   email: "",
   password: "",
   phone: "",
-  role: Role.FUNCIONARIO as Role,
+  role: Role.OPERADOR as Role,
 };
 
 /** Campos que a edicao rapida altera. Senha em branco mantem a atual. */
@@ -661,7 +661,7 @@ function PendingRow({
   onReject: () => void;
 }) {
   // O perfil e escolhido no momento da aprovacao, nao no autocadastro.
-  const [role, setRole] = useState<Role>(Role.FUNCIONARIO);
+  const [role, setRole] = useState<Role>(Role.OPERADOR);
 
   return (
     <tr>

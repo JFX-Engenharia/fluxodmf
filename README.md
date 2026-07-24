@@ -33,7 +33,7 @@ cp .env.example .env        # ajuste DATABASE_URL e AUTH_SECRET
 npm install
 npm run prisma:generate     # gera o client do Prisma
 npm run db:migrate          # cria/aplica as tabelas no PostgreSQL local
-npm run db:seed             # cria o usuário inicial e as contas
+npm run db:seed             # cria o usuário inicial
 npm run dev
 ```
 
@@ -59,7 +59,7 @@ valer, e gere um `AUTH_SECRET` longo e aleatório — é ele que assina a sessã
 | `npm run db:migrate:deploy` | Aplica migrações pendentes sem alterar o schema |
 | `npm run db:push` | Sincroniza o schema diretamente; use apenas como transição/prototipação |
 | `npm run db:setup` | Aplica migrações e garante os dados iniciais |
-| `npm run db:seed` | Cria/atualiza o usuário inicial e as contas |
+| `npm run db:seed` | Cria/atualiza o usuário inicial |
 | `npm run db:reset` | **Apaga** os dados e recria o banco local do zero |
 
 ### Deploy no Render
@@ -169,8 +169,6 @@ A comparação é normalizada, então `Reisolamento`, `REISOLAMENTO` e
 casos em que o nome na planilha não é o nome da conta — por exemplo,
 `Despesa Pessoal Jeronimo` resolve para a conta `JERONIMO`.
 
-O seed cria três contas (`EDISER`, `RECAP`, `JERONIMO`) apenas por conveniência,
-com os apelidos usados na planilha de referência. O sistema não depende delas.
 
 A leitura **para** ao encontrar o subtotal ou o cabeçalho do resumo, em vez de
 tratar essas linhas como pagamento. A prévia mostra linha a linha o que é válido,
