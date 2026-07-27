@@ -21,8 +21,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
 import { GlobalSearch } from "@/components/panel/GlobalSearch";
-import { MaintenanceBar } from "@/components/panel/MaintenanceBar";
 import { PanelContext, type PanelUser } from "@/components/panel/PanelContext";
+import { ThemeSwitcher } from "@/components/panel/ThemeSwitcher";
 import { DashboardTab } from "@/components/panel/tabs/DashboardTab";
 import { AdvancesTab } from "@/components/panel/tabs/AdvancesTab";
 import { AnalyticsTab } from "@/components/panel/tabs/AnalyticsTab";
@@ -307,12 +307,7 @@ export function PanelShell() {
           </div>
         </aside>
 
-        <main
-          className="main has-banner"
-          id="conteudo-principal"
-          tabIndex={-1}
-        >
-          <MaintenanceBar />
+        <main className="main" id="conteudo-principal" tabIndex={-1}>
           <header className="topbar">
             <div className="button-row">
               <button
@@ -330,6 +325,7 @@ export function PanelShell() {
               </div>
             </div>
             <GlobalSearch />
+            <ThemeSwitcher />
             <div className="topbar-user" aria-label={`Usuário: ${user.name}`}>
               <span className="user-avatar" aria-hidden="true">
                 {user.name
