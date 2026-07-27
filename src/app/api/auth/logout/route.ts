@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { auditLog } from "@/lib/audit";
 import { getSession, SESSION_COOKIE } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 
 export async function POST() {
   const session = await getSession();
   if (session) {
+    await prisma.userSession.updateMany({
+      where: { id: session.sessionId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
     await auditLog({
       actorId: session.id,
       event: "LOGOUT",

@@ -2,7 +2,7 @@ import { AllocationSource, PaymentStatus, Role } from "@prisma-generated/enums";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireTab } from "@/lib/auth";
+import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { allocationRows } from "@/lib/finance-management";
 import { prisma } from "@/lib/db";
 import { serializePayment } from "@/lib/serializers";
@@ -22,6 +22,7 @@ export async function POST(
 ) {
   try {
     const actor = await requireTab("pagamentos");
+    await requireMutationAllowed(actor);
     const { id } = await context.params;
     const body = schema.parse(await request.json());
     const payment = await prisma.payment.findUnique({ where: { id } });

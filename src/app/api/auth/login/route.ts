@@ -9,6 +9,7 @@ import {
   verifyPassword,
 } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { recordLoginEvent } from "@/lib/session-info";
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -28,31 +29,62 @@ export async function POST(request: NextRequest) {
     const username = body.username.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { username } });
 
-    if (!user) {
+    if (!user?.passwordHash) {
+      await recordLoginEvent(request, {
+        userId: user?.id,
+        identifier: username,
+        provider: "local",
+        success: false,
+        reason: "Credenciais inválidas",
+      });
       return NextResponse.json({ error: "Usuário ou senha inválidos." }, { status: 401 });
     }
 
     const passwordOk = await verifyPassword(body.password, user.passwordHash);
     if (!passwordOk) {
+      await recordLoginEvent(request, {
+        userId: user.id,
+        identifier: username,
+        provider: "local",
+        success: false,
+        reason: "Credenciais inválidas",
+      });
       return NextResponse.json({ error: "Usuário ou senha inválidos." }, { status: 401 });
     }
 
     // Status e checado depois da senha para nao revelar a situacao de uma
     // conta a quem nao sabe a senha dela.
     if (user.status !== UserStatus.ATIVO) {
+      await recordLoginEvent(request, {
+        userId: user.id,
+        identifier: username,
+        provider: "local",
+        success: false,
+        reason: `Status ${user.status}`,
+      });
       return NextResponse.json(
         { error: statusMessages[user.status as Exclude<UserStatus, "ATIVO">] },
         { status: 403 },
       );
     }
 
-    const token = await createSessionToken({
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      email: user.email,
-      role: user.role,
+    const requestInfo = await recordLoginEvent(request, {
+      userId: user.id,
+      identifier: username,
+      provider: "local",
+      success: true,
     });
+    const token = await createSessionToken(
+      {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        provider: "local",
+      },
+      requestInfo,
+    );
 
     await auditLog({
       actorId: user.id,

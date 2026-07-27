@@ -205,6 +205,13 @@ export async function PATCH(request: Request) {
       include,
     });
 
+    if (body.status && body.status !== UserStatus.ATIVO) {
+      await prisma.userSession.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    }
+
     // Registra so o que mudou, para a auditoria responder "o que foi alterado".
     const changes: Record<string, { de: unknown; para: unknown }> = {};
     if (body.role && body.role !== current.role) {

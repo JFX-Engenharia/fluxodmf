@@ -2,8 +2,9 @@ import { z } from "zod";
 import { ActionType, DailyFlowStatus, PaymentStatus, Role } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireUser } from "@/lib/auth";
+import { requireMutationAllowed, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { withIdempotency } from "@/lib/idempotency";
 import {
   chooseApprovalRule,
   reasonActionByPaymentAction,
@@ -48,6 +49,12 @@ export async function POST(
     const user = await requireUser();
     const { id } = await context.params;
     const body = actionSchema.parse(await request.json());
+    await requireMutationAllowed(user);
+    return withIdempotency({
+      request,
+      scope: `payment:${id}:${body.action}`,
+      actorId: user.id,
+      execute: async () => {
 
     if (!canEditPayments(user.role)) {
       throw new ApiError(403, "Seu perfil não tem permissão para agir sobre pagamentos.");
@@ -255,6 +262,8 @@ export async function POST(
             completed: newStatus === PaymentStatus.APROVADO,
           }
         : null,
+    });
+      },
     });
   } catch (error) {
     return handleApiError(error);

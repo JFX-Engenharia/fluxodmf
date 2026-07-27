@@ -2,7 +2,7 @@ import { AdvanceStatus } from "@prisma-generated/enums";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireTab } from "@/lib/auth";
+import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { numberValue } from "@/lib/finance-management";
 import { prisma } from "@/lib/db";
 
@@ -65,6 +65,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const actor = await requireTab("adiantamentos");
+    await requireMutationAllowed(actor);
     const body = bodySchema.parse(await request.json());
     if (body.action === "cancel") {
       const updated = await prisma.advance.update({

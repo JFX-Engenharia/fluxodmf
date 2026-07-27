@@ -2,8 +2,8 @@
 
 import { Check, ShieldCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { OperationalExports } from "@/components/panel/OperationalExports";
 import { usePanel } from "@/components/panel/PanelContext";
-import { SystemDataActions } from "@/components/panel/SystemDataActions";
 import type { PanelUserRow } from "@/components/panel/tabs/UsersTab";
 import { useFetchData } from "@/components/panel/useFetchData";
 import { userStatusLabels } from "@/lib/format";
@@ -398,7 +398,7 @@ export function PermissionsTab() {
           </div>
         </div>
       </section>
-      <SystemDataActions onReset={() => { reload(); reloadWorks(); }} />
+      <OperationalExports />
     </>
   );
 }

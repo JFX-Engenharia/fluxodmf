@@ -4,6 +4,7 @@ import { auditLog } from "@/lib/audit";
 import { handleApiError, ok } from "@/lib/api";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { withIdempotency } from "@/lib/idempotency";
 
 const resetSchema = z.object({
   action: z.literal("reset"),
@@ -152,6 +153,11 @@ export async function POST(request: Request) {
   try {
     const actor = await requireRole([Role.ADMINISTRADOR]);
     resetSchema.parse(await request.json());
+    return withIdempotency({
+      request,
+      scope: "system:reset",
+      actorId: actor.id,
+      execute: async () => {
 
     const result = await prisma.$transaction(async (tx) => {
       const paymentRequestAttachments = await tx.paymentRequestAttachment.deleteMany();
@@ -200,6 +206,8 @@ export async function POST(request: Request) {
     });
 
     return ok({ result });
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

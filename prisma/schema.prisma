@@ -97,7 +97,7 @@ model User {
   name          String
   username      String            @unique
   email         String            @unique
-  passwordHash  String
+  passwordHash  String?
   role          Role              @default(OPERADOR)
   status        UserStatus        @default(PENDENTE)
   phone         String?
@@ -118,10 +118,49 @@ model User {
   responsibleWorks Work[] @relation("WorkResponsible")
   paymentRequests   PaymentRequest[] @relation("PaymentRequestRequestedBy")
   reviewedPaymentRequests PaymentRequest[] @relation("PaymentRequestReviewedBy")
+  sessions      UserSession[]
+  loginEvents   LoginEvent[]
+  authProvider  String?
+  externalSubject String?
+  lastLoginAt   DateTime?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
   @@index([status])
+  @@unique([authProvider, externalSubject])
+}
+
+model UserSession {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   String   @default("local")
+  ipAddress  String?
+  userAgent  String?
+  device     String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model LoginEvent {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  identifier String
+  provider   String   @default("local")
+  success    Boolean
+  reason     String?
+  ipAddress  String?
+  userAgent  String?
+  device     String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model Work {
@@ -467,6 +506,20 @@ model AuditLog {
   createdAt DateTime @default(now())
 }
 
+model IdempotencyKey {
+  id           String   @id @default(cuid())
+  scope        String
+  key          String
+  actorId      String?
+  status       Int
+  response     String
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+}
+
 /// Aviso de manutencao do sistema. Linha unica (id fixo "singleton"): quem liga
 /// e quando ficam gravados para o painel exibir o coordenador que sinalizou a
 /// manutencao. So coordenadores leem/alteram este registro.
@@ -476,5 +529,7 @@ model MaintenanceNotice {
   activatedById   String?
   activatedByName String?
   activatedAt     DateTime?
+  reason          String?
+  estimatedEndAt  DateTime?
   updatedAt       DateTime  @updatedAt
 }

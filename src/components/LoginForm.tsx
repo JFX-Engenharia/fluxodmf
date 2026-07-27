@@ -1,8 +1,8 @@
 "use client";
 
-import { Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
+import { Building2, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type LoginResponse = {
   user?: { id: string };
@@ -24,16 +24,49 @@ const emptySignup = {
   phone: "",
 };
 
-export function LoginForm() {
+const corporateMessages: Record<string, string> = {
+  pending: "Conta corporativa vinculada. Aguarde a aprovação de um administrador.",
+  rejected: "O acesso desta conta corporativa foi recusado.",
+  inactive: "O acesso desta conta corporativa está desativado.",
+  error: "Não foi possível concluir o login corporativo.",
+  disabled: "O login corporativo ainda não está configurado.",
+};
+
+type LoginFormProps = {
+  corporateStatus?: string;
+};
+
+export function LoginForm({ corporateStatus }: LoginFormProps) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [signup, setSignup] = useState(emptySignup);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(corporateMessages[corporateStatus ?? ""] ?? "");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [corporate, setCorporate] = useState<{ enabled: boolean; providerName: string | null }>({
+    enabled: false,
+    providerName: null,
+  });
+
+  useEffect(() => {
+    fetch("/api/auth/oidc/config")
+      .then((response) => response.json())
+      .then((value: unknown) => {
+        if (value && typeof value === "object" && "enabled" in value && typeof value.enabled === "boolean") {
+          setCorporate({
+            enabled: value.enabled,
+            providerName:
+              "providerName" in value && typeof value.providerName === "string"
+                ? value.providerName
+                : null,
+          });
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -226,6 +259,12 @@ export function LoginForm() {
         <LogIn size={16} />
         {loading ? "Entrando..." : "Entrar"}
       </button>
+      {corporate.enabled ? (
+        <a className="button secondary" href="/api/auth/oidc/start">
+          <Building2 size={16} />
+          Entrar com {corporate.providerName ?? "conta corporativa"}
+        </a>
+      ) : null}
 
       <button
         className="button ghost"

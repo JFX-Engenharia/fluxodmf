@@ -230,7 +230,7 @@ export function PaymentsTab() {
     try {
       const response = await fetch("/api/daily-flows", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({ flowId: selectedFlow.id, action, reason }),
       });
       const data = await response.json();
@@ -276,7 +276,7 @@ export function PaymentsTab() {
     try {
       const response = await fetch(`/api/payments/${selected.id}/action`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({ action, ...payload }),
       });
       const result = await response.json();
@@ -372,12 +372,16 @@ export function PaymentsTab() {
           : { reason: batchReason, standardReasonId: batchStandardReasonId || undefined };
 
     const result: BatchResult = { done: 0, failed: [] };
+    const batchKey = crypto.randomUUID();
 
     for (const payment of batchPayments) {
       try {
         const response = await fetch(`/api/payments/${payment.id}/action`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": `${batchKey}:${payment.id}`,
+          },
           body: JSON.stringify({ action: batchAction, ...payload }),
         });
 

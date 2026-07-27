@@ -20,6 +20,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
+import { GlobalSearch } from "@/components/panel/GlobalSearch";
 import { MaintenanceBar } from "@/components/panel/MaintenanceBar";
 import { PanelContext, type PanelUser } from "@/components/panel/PanelContext";
 import { DashboardTab } from "@/components/panel/tabs/DashboardTab";
@@ -33,7 +34,7 @@ import { PaymentsTab } from "@/components/panel/tabs/PaymentsTab";
 import { PermissionsTab } from "@/components/panel/tabs/PermissionsTab";
 import { ReconciliationTab } from "@/components/panel/tabs/ReconciliationTab";
 import { UsersTab } from "@/components/panel/tabs/UsersTab";
-import { Role, roleLabels, TAB_IDS, type TabId } from "@/lib/permissions";
+import { roleLabels, TAB_IDS, type TabId } from "@/lib/permissions";
 
 type MeResponse = {
   user: PanelUser;
@@ -235,7 +236,6 @@ export function PanelShell() {
 
   const current = tabDefinitions.find((tab) => tab.id === activeTab) ?? tabDefinitions[0];
   const ActiveComponent = current.Component;
-  const isCoordinator = user.role === Role.ADMINISTRADOR;
 
   return (
     <PanelContext.Provider value={{ user, tabs, goToTab }}>
@@ -308,11 +308,11 @@ export function PanelShell() {
         </aside>
 
         <main
-          className={clsx("main", isCoordinator && "has-banner")}
+          className="main has-banner"
           id="conteudo-principal"
           tabIndex={-1}
         >
-          {isCoordinator ? <MaintenanceBar /> : null}
+          <MaintenanceBar />
           <header className="topbar">
             <div className="button-row">
               <button
@@ -329,6 +329,7 @@ export function PanelShell() {
                 <p>{current.subtitle}</p>
               </div>
             </div>
+            <GlobalSearch />
             <div className="topbar-user" aria-label={`Usuário: ${user.name}`}>
               <span className="user-avatar" aria-hidden="true">
                 {user.name
