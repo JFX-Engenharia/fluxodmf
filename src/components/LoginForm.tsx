@@ -1,6 +1,6 @@
 "use client";
 
-import { LogIn, UserPlus } from "lucide-react";
+import { Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
@@ -29,6 +29,7 @@ export function LoginForm() {
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [signup, setSignup] = useState(emptySignup);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -196,15 +197,26 @@ export function LoginForm() {
 
       <div className="field">
         <label htmlFor="password">Senha</label>
-        <input
-          className="input"
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          required
-        />
+        <div className="password-input">
+          <input
+            className="input"
+            id="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+          <button
+            className="password-visibility-button"
+            type="button"
+            aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+            aria-pressed={showPassword}
+            onClick={() => setShowPassword(!showPassword)}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
       </div>
 
       {error ? <div className="alert error" role="alert">{error}</div> : null}
