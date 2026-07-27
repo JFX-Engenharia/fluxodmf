@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, RefreshCw, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { AdminSessions } from "@/components/panel/AdminSessions";
 import { SystemDataActions } from "@/components/panel/SystemDataActions";
 import { useFetchData } from "@/components/panel/useFetchData";
@@ -97,6 +97,8 @@ export function LogsTab() {
   const [clearBusy, setClearBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearConfirmation, setClearConfirmation] = useState("");
 
   // Mudar um filtro muda a url e o hook refaz a busca sozinho.
   const url = useMemo(() => {
@@ -135,11 +137,9 @@ export function LogsTab() {
     }
   }
 
-  async function clearLogs() {
-    const confirmation = window.prompt(
-      "Esta ação apaga todo o histórico de auditoria. Digite LIMPAR LOGS para confirmar.",
-    );
-    if (confirmation !== "LIMPAR LOGS") return;
+  async function clearLogs(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (clearConfirmation !== "LIMPAR LOGS") return;
     setClearBusy(true);
     setActionError("");
     setMessage("");
@@ -150,7 +150,7 @@ export function LogsTab() {
           "Content-Type": "application/json",
           "Idempotency-Key": crypto.randomUUID(),
         },
-        body: JSON.stringify({ confirmation }),
+        body: JSON.stringify({ confirmation: clearConfirmation }),
       });
       const value: unknown = await response.json();
       if (!response.ok) {
@@ -164,6 +164,8 @@ export function LogsTab() {
         value && typeof value === "object" && "deleted" in value && typeof value.deleted === "number"
           ? value.deleted
           : 0;
+      setClearOpen(false);
+      setClearConfirmation("");
       setEvent("");
       setActorId("");
       setMessage(`${deleted} registro(s) removido(s). A limpeza foi registrada.`);
@@ -218,7 +220,7 @@ export function LogsTab() {
           <Download size={16} />
           {backupBusy ? "Criando backup..." : "Backup dos logs"}
         </button>
-        <button className="button danger" type="button" onClick={clearLogs} disabled={backupBusy || clearBusy}>
+        <button className="button danger" type="button" onClick={() => setClearOpen(true)} disabled={backupBusy || clearBusy}>
           <Trash2 size={16} />
           {clearBusy ? "Limpando..." : "Limpar logs"}
         </button>
@@ -297,6 +299,51 @@ export function LogsTab() {
       </section>
       <AdminSessions />
       <SystemDataActions onReset={reload} />
+      {clearOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <form className="modal" role="dialog" aria-modal="true" aria-labelledby="clear-logs-title" onSubmit={clearLogs}>
+            <h2 id="clear-logs-title">Limpar histórico de auditoria</h2>
+            <p>
+              Esta ação remove permanentemente todos os logs atuais. Um registro da própria
+              limpeza será mantido.
+            </p>
+            <div className="field">
+              <label htmlFor="clear-logs-confirmation">
+                Digite <strong>LIMPAR LOGS</strong> para confirmar
+              </label>
+              <input
+                autoFocus
+                className="input"
+                id="clear-logs-confirmation"
+                value={clearConfirmation}
+                onChange={(event) => setClearConfirmation(event.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="form-actions">
+              <button
+                className="button secondary"
+                type="button"
+                disabled={clearBusy}
+                onClick={() => {
+                  setClearOpen(false);
+                  setClearConfirmation("");
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="button danger"
+                type="submit"
+                disabled={clearBusy || clearConfirmation !== "LIMPAR LOGS"}
+              >
+                <Trash2 size={16} />
+                {clearBusy ? "Limpando..." : "Limpar definitivamente"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </>
   );
 }
