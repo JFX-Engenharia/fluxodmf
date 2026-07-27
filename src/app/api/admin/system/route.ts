@@ -145,8 +145,8 @@ export async function GET() {
 }
 
 /**
- * Remove registros operacionais e contas financeiras. Usuários e regras são
- * preservados para manter o acesso administrativo e a configuração do sistema.
+ * Remove somente os registros operacionais. Contas, usuários, obras e regras
+ * permanecem para que o administrador não perca acesso nem precise reconfigurar o sistema.
  */
 export async function POST(request: Request) {
   try {
@@ -163,8 +163,6 @@ export async function POST(request: Request) {
       const payments = await tx.payment.deleteMany();
       const importBatches = await tx.importBatch.deleteMany();
       const advances = await tx.advance.deleteMany();
-      const allocationRuleSplits = await tx.allocationRuleSplit.deleteMany();
-      const works = await tx.work.deleteMany();
 
       return {
         paymentRequestAttachments: paymentRequestAttachments.count,
@@ -176,8 +174,6 @@ export async function POST(request: Request) {
         payments: payments.count,
         importBatches: importBatches.count,
         advances: advances.count,
-        allocationRuleSplits: allocationRuleSplits.count,
-        works: works.count,
       };
     });
 

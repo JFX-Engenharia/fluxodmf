@@ -46,7 +46,7 @@ export function SystemDataActions() {
 
   async function resetOperationalData() {
     const confirmation = window.prompt(
-      "Esta ação apaga permanentemente os dados operacionais e as contas financeiras. Usuários serão mantidos. Digite RESETAR para confirmar.",
+      "Esta ação apaga permanentemente os dados operacionais. Digite RESETAR para confirmar.",
     );
     if (confirmation !== "RESETAR") return;
 
@@ -83,7 +83,7 @@ export function SystemDataActions() {
           <h2>Dados do sistema</h2>
           <span className="muted">
             Gere um backup antes de resetar. O reset remove pagamentos, importações, solicitações,
-            adiantamentos, contas financeiras e seus históricos. Usuários e regras são preservados.
+            adiantamentos e seus históricos; usuários, obras e configurações são preservados.
           </span>
         </div>
       </div>
