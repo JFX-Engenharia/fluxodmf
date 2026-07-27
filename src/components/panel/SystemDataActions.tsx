@@ -3,7 +3,11 @@
 import { Download, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
-export function SystemDataActions() {
+type SystemDataActionsProps = {
+  onReset: () => void;
+};
+
+export function SystemDataActions({ onReset }: SystemDataActionsProps) {
   const [backupBusy, setBackupBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -68,7 +72,22 @@ export function SystemDataActions() {
             : "Não foi possível resetar os dados.";
         throw new Error(message);
       }
-      setMessage("Dados operacionais resetados. Os indicadores voltaram a zero.");
+      const deletedWorks =
+        body &&
+        typeof body === "object" &&
+        "result" in body &&
+        body.result &&
+        typeof body.result === "object" &&
+        "works" in body.result &&
+        typeof body.result.works === "number"
+          ? body.result.works
+          : null;
+      setMessage(
+        deletedWorks === null
+          ? "Dados operacionais resetados. Os indicadores voltaram a zero."
+          : `Dados operacionais resetados. ${deletedWorks} conta(s) financeira(s) removida(s).`,
+      );
+      onReset();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Falha ao resetar os dados.");
     } finally {
@@ -83,7 +102,7 @@ export function SystemDataActions() {
           <h2>Dados do sistema</h2>
           <span className="muted">
             Gere um backup antes de resetar. O reset remove pagamentos, importações, solicitações,
-            adiantamentos e seus históricos; usuários, obras e configurações são preservados.
+            adiantamentos, contas financeiras e seus históricos. Usuários e regras são preservados.
           </span>
         </div>
       </div>

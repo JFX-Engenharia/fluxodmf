@@ -145,8 +145,8 @@ export async function GET() {
 }
 
 /**
- * Remove somente os registros operacionais. Contas, usuários, obras e regras
- * permanecem para que o administrador não perca acesso nem precise reconfigurar o sistema.
+ * Remove registros operacionais e contas financeiras. Usuários e regras são
+ * preservados para manter o acesso administrativo e a configuração do sistema.
  */
 export async function POST(request: Request) {
   try {
@@ -160,9 +160,17 @@ export async function POST(request: Request) {
       const dailyFlows = await tx.dailyFlow.deleteMany();
       const paymentActions = await tx.paymentAction.deleteMany();
       const attachments = await tx.attachment.deleteMany();
+      const paymentApprovals = await tx.paymentApproval.deleteMany();
+      const paymentTags = await tx.paymentTag.deleteMany();
+      const paymentAllocations = await tx.paymentAllocation.deleteMany();
       const payments = await tx.payment.deleteMany();
+      const contributions = await tx.contribution.deleteMany();
       const importBatches = await tx.importBatch.deleteMany();
       const advances = await tx.advance.deleteMany();
+      // Regras de rateio apontam para contas e impedem sua exclusão.
+      const allocationRuleSplits = await tx.allocationRuleSplit.deleteMany();
+      const userWorks = await tx.userWork.deleteMany();
+      const works = await tx.work.deleteMany();
 
       return {
         paymentRequestAttachments: paymentRequestAttachments.count,
@@ -171,9 +179,16 @@ export async function POST(request: Request) {
         dailyFlows: dailyFlows.count,
         paymentActions: paymentActions.count,
         attachments: attachments.count,
+        paymentApprovals: paymentApprovals.count,
+        paymentTags: paymentTags.count,
+        paymentAllocations: paymentAllocations.count,
         payments: payments.count,
         importBatches: importBatches.count,
+        contributions: contributions.count,
         advances: advances.count,
+        allocationRuleSplits: allocationRuleSplits.count,
+        userWorks: userWorks.count,
+        works: works.count,
       };
     });
 
