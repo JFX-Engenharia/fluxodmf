@@ -27,6 +27,7 @@ export async function GET(request: Request) {
         total: logs.length,
         logs: logs.map((log) => ({
           id: log.id,
+          actorId: log.actorId,
           event: log.event,
           entity: log.entity,
           entityId: log.entityId,
