@@ -398,7 +398,7 @@ export function PermissionsTab() {
           </div>
         </div>
       </section>
-      <SystemDataActions />
+      <SystemDataActions onReset={() => { reload(); reloadWorks(); }} />
     </>
   );
 }
