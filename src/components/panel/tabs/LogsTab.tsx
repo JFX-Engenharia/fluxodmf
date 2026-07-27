@@ -1,7 +1,9 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Download, RefreshCw, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { AdminSessions } from "@/components/panel/AdminSessions";
+import { SystemDataActions } from "@/components/panel/SystemDataActions";
 import { useFetchData } from "@/components/panel/useFetchData";
 import { dateTime } from "@/lib/format";
 
@@ -43,6 +45,8 @@ const eventLabels: Record<string, string> = {
   PAGAMENTO_ACAO: "Ação em pagamento",
   CONTA_CRIADA: "Criou conta",
   CONTA_ATUALIZADA: "Atualizou conta",
+  BACKUP_LOG_GERADO: "Gerou backup dos logs",
+  AUDITORIA_LIMPA: "Limpou os logs",
 };
 
 const eventClass: Record<string, string> = {
@@ -53,6 +57,8 @@ const eventClass: Record<string, string> = {
   USUARIO_EXCLUIDO: "REPROVADO",
   USUARIO_DESATIVADO: "CANCELADO",
   IMPORT_CONFIRM: "APROVADO",
+  AUDITORIA_LIMPA: "CANCELADO",
+  BACKUP_LOG_GERADO: "TRANSFERIDO",
 };
 
 /**
@@ -87,6 +93,10 @@ function describeMetadata(metadata: Record<string, unknown>): string[] {
 export function LogsTab() {
   const [event, setEvent] = useState("");
   const [actorId, setActorId] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [message, setMessage] = useState("");
 
   // Mudar um filtro muda a url e o hook refaz a busca sozinho.
   const url = useMemo(() => {
@@ -98,9 +108,78 @@ export function LogsTab() {
 
   const { data, error, loading, reload } = useFetchData<AuditResponse>(url);
 
+  async function backupLogs() {
+    setBackupBusy(true);
+    setActionError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/audit?download=true", { cache: "no-store" });
+      if (!response.ok) throw new Error("Não foi possível criar o backup dos logs.");
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const fileName = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? "logs.json";
+      const target = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = target;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(target);
+      setMessage("Backup dos logs baixado com sucesso.");
+      reload();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Falha ao criar o backup.");
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
+  async function clearLogs() {
+    const confirmation = window.prompt(
+      "Esta ação apaga todo o histórico de auditoria. Digite LIMPAR LOGS para confirmar.",
+    );
+    if (confirmation !== "LIMPAR LOGS") return;
+    setClearBusy(true);
+    setActionError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/audit", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify({ confirmation }),
+      });
+      const value: unknown = await response.json();
+      if (!response.ok) {
+        const detail =
+          value && typeof value === "object" && "error" in value && typeof value.error === "string"
+            ? value.error
+            : "Não foi possível limpar os logs.";
+        throw new Error(detail);
+      }
+      const deleted =
+        value && typeof value === "object" && "deleted" in value && typeof value.deleted === "number"
+          ? value.deleted
+          : 0;
+      setEvent("");
+      setActorId("");
+      setMessage(`${deleted} registro(s) removido(s). A limpeza foi registrada.`);
+      reload();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Falha ao limpar os logs.");
+    } finally {
+      setClearBusy(false);
+    }
+  }
+
   return (
     <>
       {error ? <div className="alert error" role="alert">{error}</div> : null}
+      {actionError ? <div className="alert error" role="alert">{actionError}</div> : null}
+      {message ? <div className="alert success" role="status">{message}</div> : null}
 
       <section className="toolbar">
         <select
@@ -134,6 +213,14 @@ export function LogsTab() {
         <button className="button secondary" type="button" onClick={reload}>
           <RefreshCw size={16} />
           Atualizar
+        </button>
+        <button className="button secondary" type="button" onClick={backupLogs} disabled={backupBusy || clearBusy}>
+          <Download size={16} />
+          {backupBusy ? "Criando backup..." : "Backup dos logs"}
+        </button>
+        <button className="button danger" type="button" onClick={clearLogs} disabled={backupBusy || clearBusy}>
+          <Trash2 size={16} />
+          {clearBusy ? "Limpando..." : "Limpar logs"}
         </button>
       </section>
 
@@ -208,6 +295,8 @@ export function LogsTab() {
           </div>
         </div>
       </section>
+      <AdminSessions />
+      <SystemDataActions onReset={reload} />
     </>
   );
 }

@@ -2,8 +2,9 @@ import { Role, UserStatus } from "@prisma-generated/enums";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireUser } from "@/lib/auth";
+import { requireMutationAllowed, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { withIdempotency } from "@/lib/idempotency";
 
 const requestSchema = z.object({
   supplierName: z.string().trim().min(2, "Informe o fornecedor.").max(160),
@@ -101,6 +102,12 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const actor = await requireUser();
+    await requireMutationAllowed(actor);
+    return withIdempotency({
+      request,
+      scope: "payment-request:create",
+      actorId: actor.id,
+      execute: async () => {
     const formData = await request.formData();
     const body = requestSchema.parse(Object.fromEntries(formData));
     const attachments = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File);
@@ -157,6 +164,8 @@ export async function POST(request: Request) {
       metadata: { obra: work.name, fornecedor: saved.supplierName, valor: Number(saved.amount), anexos: attachments.length },
     });
     return ok({ request: serializeRequest(saved) }, 201);
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

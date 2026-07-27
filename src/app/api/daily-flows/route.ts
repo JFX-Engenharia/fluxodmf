@@ -6,8 +6,9 @@ import {
 } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireTab } from "@/lib/auth";
+import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { serializeDailyFlow, summarizePayments } from "@/lib/daily-flow";
+import { withIdempotency } from "@/lib/idempotency";
 import { prisma } from "@/lib/db";
 import { canAdminister } from "@/lib/permissions";
 
@@ -52,6 +53,12 @@ export async function POST(request: Request) {
   try {
     const actor = await requireTab("pagamentos");
     const body = actionSchema.parse(await request.json());
+    await requireMutationAllowed(actor);
+    return withIdempotency({
+      request,
+      scope: `daily-flow:${body.flowId}:${body.action}`,
+      actorId: actor.id,
+      execute: async () => {
 
     const flow = await prisma.dailyFlow.findUnique({
       where: { id: body.flowId },
@@ -153,6 +160,8 @@ export async function POST(request: Request) {
     });
 
     return ok({ flow: serializeDailyFlow(updated) });
+      },
+    });
   } catch (error) {
     return handleApiError(error);
   }

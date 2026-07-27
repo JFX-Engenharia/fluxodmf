@@ -1,7 +1,7 @@
 "use client";
 
-import { Download, RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { Download, FileUp, RotateCcw } from "lucide-react";
+import { ChangeEvent, useRef, useState } from "react";
 
 type SystemDataActionsProps = {
   onReset: () => void;
@@ -10,6 +10,8 @@ type SystemDataActionsProps = {
 export function SystemDataActions({ onReset }: SystemDataActionsProps) {
   const [backupBusy, setBackupBusy] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const restoreInput = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -48,9 +50,44 @@ export function SystemDataActions({ onReset }: SystemDataActionsProps) {
     }
   }
 
+  async function restoreBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !confirm("Restaurar este backup substituirá todos os dados operacionais atuais. Continuar?")) return;
+    setRestoreBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const content = await file.text();
+      JSON.parse(content);
+      const response = await fetch("/api/admin/system/restore", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: content,
+      });
+      const value: unknown = await response.json();
+      if (!response.ok) {
+        const detail =
+          value && typeof value === "object" && "error" in value && typeof value.error === "string"
+            ? value.error
+            : "Não foi possível restaurar o backup.";
+        throw new Error(detail);
+      }
+      setMessage("Backup restaurado com sucesso.");
+      onReset();
+    } catch (caught) {
+      setError(caught instanceof SyntaxError ? "O arquivo não contém um backup JSON válido." : caught instanceof Error ? caught.message : "Falha ao restaurar o backup.");
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
   async function resetOperationalData() {
     const confirmation = window.prompt(
-      "Esta ação apaga permanentemente os dados operacionais. Digite RESETAR para confirmar.",
+      "Esta ação apaga permanentemente os dados operacionais e as contas financeiras. Usuários serão mantidos. Digite RESETAR para confirmar.",
     );
     if (confirmation !== "RESETAR") return;
 
@@ -61,7 +98,10 @@ export function SystemDataActions({ onReset }: SystemDataActionsProps) {
     try {
       const response = await fetch("/api/admin/system", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
         body: JSON.stringify({ action: "reset", confirmation }),
       });
       const body: unknown = await response.json();
@@ -110,11 +150,16 @@ export function SystemDataActions({ onReset }: SystemDataActionsProps) {
         {error ? <div className="alert error" role="alert">{error}</div> : null}
         {message ? <div className="alert success" role="status">{message}</div> : null}
         <div className="button-row">
-          <button className="button secondary" type="button" disabled={backupBusy || resetBusy} onClick={downloadBackup}>
+          <button className="button secondary" type="button" disabled={backupBusy || resetBusy || restoreBusy} onClick={downloadBackup}>
             <Download size={16} />
             {backupBusy ? "Gerando backup..." : "Criar backup"}
           </button>
-          <button className="button danger" type="button" disabled={backupBusy || resetBusy} onClick={resetOperationalData}>
+          <input ref={restoreInput} hidden type="file" accept="application/json,.json" onChange={restoreBackup} />
+          <button className="button secondary" type="button" disabled={backupBusy || resetBusy || restoreBusy} onClick={() => restoreInput.current?.click()}>
+            <FileUp size={16} />
+            {restoreBusy ? "Restaurando..." : "Restaurar backup"}
+          </button>
+          <button className="button danger" type="button" disabled={backupBusy || resetBusy || restoreBusy} onClick={resetOperationalData}>
             <RotateCcw size={16} />
             {resetBusy ? "Resetando dados..." : "Resetar valores para zero"}
           </button>

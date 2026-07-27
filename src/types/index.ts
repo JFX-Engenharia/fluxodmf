@@ -6,6 +6,8 @@ export type SessionUser = {
   username: string;
   email: string;
   role: Role;
+  sessionId: string;
+  provider: string;
 };
 
 export type { Role, UserStatus };

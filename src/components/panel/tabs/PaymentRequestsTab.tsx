@@ -65,7 +65,11 @@ export function PaymentRequestsTab() {
     Object.entries(form).forEach(([key, value]) => payload.set(key, value));
     files.forEach((file) => payload.append("attachments", file));
     try {
-      const response = await fetch("/api/payment-requests", { method: "POST", body: payload });
+      const response = await fetch("/api/payment-requests", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: payload,
+      });
       const body = await response.json();
       if (!response.ok) {
         setError(body.error ?? "Não foi possível enviar a solicitação.");

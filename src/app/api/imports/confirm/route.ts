@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AllocationSource, ActionType, DailyFlowEventType, PaymentStatus } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireTab } from "@/lib/auth";
+import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { matchWork, normalizeName, uniqueSlug } from "@/lib/cost-center";
 import { prisma } from "@/lib/db";
 import { allocationRows, chooseAllocationRule } from "@/lib/finance-management";
@@ -57,6 +57,7 @@ function defaultFlowName() {
 export async function POST(request: Request) {
   try {
     const user = await requireTab("importar");
+    await requireMutationAllowed(user);
     const body = confirmSchema.parse(await request.json());
     const flowName = body.importName || defaultFlowName();
 

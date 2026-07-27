@@ -2,7 +2,12 @@ import { BrandMark } from "@/components/BrandMark";
 import { LoginForm } from "@/components/LoginForm";
 import { BarChart3, CheckCircle2, ShieldCheck } from "lucide-react";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ corporate?: string }>;
+}) {
+  const { corporate } = await searchParams;
   return (
     <main className="login-shell">
       <div className="login-layout">
@@ -47,7 +52,7 @@ export default function LoginPage() {
             <h1 className="login-title" id="login-title">Acesse sua conta</h1>
             <p className="login-subtitle">Entre para acompanhar o fluxo de pagamentos.</p>
           </div>
-          <LoginForm />
+          <LoginForm corporateStatus={corporate} />
           <p className="login-help">Ambiente restrito · Seus dados permanecem protegidos</p>
         </section>
       </div>
