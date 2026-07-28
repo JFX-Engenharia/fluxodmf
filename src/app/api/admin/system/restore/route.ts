@@ -25,7 +25,26 @@ const workApprover = z.object({ workId: z.string(), userId: z.string() });
 const userWork = z.object({ userId: z.string(), workId: z.string() });
 const approvalRuleLink = z.object({ id: z.string(), workId: z.string().nullable() }).passthrough();
 const allocationRuleSplit = z.object({ id: z.string(), ruleId: z.string(), workId: z.string(), percentage: decimal });
-const importBatch = z.object({ id: z.string(), fileName: z.string(), totalRows: z.number(), validRows: z.number(), invalidRows: z.number(), status: z.nativeEnum(ImportStatus), importedById: z.string(), createdAt: date });
+const importBatch = z.object({
+  id: z.string(),
+  fileName: z.string(),
+  totalRows: z.number(),
+  validRows: z.number(),
+  invalidRows: z.number(),
+  status: z.nativeEnum(ImportStatus),
+  importedById: z.string(),
+  sourceFileName: z.string(),
+  flowName: z.string(),
+  processedRows: z.number(),
+  importedRows: z.number(),
+  importedContributions: z.number(),
+  createdAccounts: z.string(),
+  attempts: z.number(),
+  error: z.string(),
+  startedAt: nullableDate,
+  finishedAt: nullableDate,
+  createdAt: date,
+});
 const contribution = z.object({ id: z.string(), accountLabel: z.string(), amount: decimal, workId: z.string(), importBatchId: z.string(), createdAt: date });
 const payment = z.object({
   id: z.string(), externalReference: z.string().nullable(), supplierName: z.string(), description: z.string(), amount: decimal,
@@ -94,7 +113,9 @@ export async function POST(request: Request) {
           );
           await tx.allocationRuleSplit.createMany({ data: backup.data.allocationRuleSplits });
           await tx.userWork.createMany({ data: backup.data.userWorks });
-          await tx.importBatch.createMany({ data: backup.data.importBatches });
+          await tx.importBatch.createMany({
+            data: backup.data.importBatches.map((batch) => ({ ...batch, payload: "" })),
+          });
           await tx.contribution.createMany({ data: backup.data.contributions });
           await tx.payment.createMany({ data: backup.data.payments });
           await tx.paymentAction.createMany({ data: backup.data.paymentActions });

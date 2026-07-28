@@ -37,6 +37,8 @@ enum PaymentStatus {
 }
 
 enum ImportStatus {
+  PENDENTE
+  PROCESSANDO
   CONFIRMADO
   FALHOU
 }
@@ -227,6 +229,17 @@ model ImportBatch {
   payments      Payment[]
   contributions Contribution[]
   dailyFlow     DailyFlow?
+  sourceFileName        String         @default("")
+  flowName              String         @default("")
+  payload               String         @default("")
+  processedRows         Int            @default(0)
+  importedRows          Int            @default(0)
+  importedContributions Int            @default(0)
+  createdAccounts       String         @default("[]")
+  attempts              Int            @default(0)
+  error                 String         @default("")
+  startedAt             DateTime?
+  finishedAt            DateTime?
   createdAt     DateTime       @default(now())
 }
 

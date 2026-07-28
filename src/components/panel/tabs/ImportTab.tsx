@@ -8,7 +8,7 @@ import {
   Upload,
   Wand2,
 } from "lucide-react";
-import { ChangeEvent, DragEvent, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { Money } from "@/components/Money";
 import { money, shortDate } from "@/lib/format";
 import type { FlowConversion } from "@/lib/flow-converter";
@@ -19,13 +19,29 @@ import { usePanel } from "@/components/panel/PanelContext";
 type ImportStep = "convert" | "import" | "flow";
 
 type ConfirmResponse = {
-  flowId?: string;
-  flowName?: string;
-  importedRows?: number;
-  skippedRows?: number;
-  importedContributions?: number;
-  createdAccounts?: string[];
+  taskId?: string;
+  status?: "PENDENTE";
   error?: string;
+};
+
+type ImportTask = {
+  id: string;
+  status: "PENDENTE" | "PROCESSANDO" | "CONFIRMADO" | "FALHOU";
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  processedRows: number;
+  importedRows: number;
+  importedContributions: number;
+  createdAccounts: string[];
+  attempts: number;
+  error: string;
+  sourceFileName: string;
+  flowName: string;
+  flowId: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
 };
 
 type CreatedFlow = {
@@ -45,6 +61,7 @@ export function ImportTab() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confirmKeyRef = useRef("");
 
   // Conversor do export bruto do Conta Azul.
   const [rawFile, setRawFile] = useState<File | null>(null);
@@ -56,6 +73,64 @@ export function ImportTab() {
   const [step, setStep] = useState<ImportStep>("convert");
   const [createdFlow, setCreatedFlow] = useState<CreatedFlow | null>(null);
   const [sendingFlow, setSendingFlow] = useState(false);
+  const [taskId, setTaskId] = useState("");
+  const [importTask, setImportTask] = useState<ImportTask | null>(null);
+
+  useEffect(() => {
+    const resume = window.setTimeout(() => {
+      const storedTaskId = localStorage.getItem("fluxo-import-task");
+      if (storedTaskId) {
+        setTaskId(storedTaskId);
+        setStep("flow");
+      }
+    }, 0);
+    return () => window.clearTimeout(resume);
+  }, []);
+
+  useEffect(() => {
+    if (!taskId) return;
+    let cancelled = false;
+
+    async function refreshTask() {
+      try {
+        const response = await fetch("/api/imports/tasks", { cache: "no-store" });
+        const data = (await response.json()) as { tasks?: ImportTask[]; error?: string };
+        if (!response.ok) {
+          if (!cancelled) setError(data.error ?? "Não foi possível acompanhar a importação.");
+          return;
+        }
+        const task = data.tasks?.find(({ id }) => id === taskId);
+        if (!task || cancelled) return;
+        setImportTask(task);
+        if (task.status === "CONFIRMADO") {
+          if (!task.flowId) {
+            setError("A importação foi concluída, mas o fluxo não pôde ser aberto.");
+            return;
+          }
+          setCreatedFlow({
+            id: task.flowId,
+            name: task.flowName,
+            importedRows: task.importedRows,
+            importedContributions: task.importedContributions,
+            status: "RASCUNHO",
+          });
+          if (localStorage.getItem("fluxo-import-task") === task.id) {
+            localStorage.removeItem("fluxo-import-task");
+          }
+          setTaskId("");
+        }
+      } catch {
+        if (!cancelled) setError("Falha de conexão ao acompanhar a importação.");
+      }
+    }
+
+    void refreshTask();
+    const interval = window.setInterval(() => void refreshTask(), 2_500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [taskId]);
 
   function reset() {
     setPreview(null);
@@ -98,6 +173,7 @@ export function ImportTab() {
         return;
       }
 
+      confirmKeyRef.current = crypto.randomUUID();
       setPreview(data as ImportPreview);
     } catch {
       setError("Falha de conexão ao enviar o arquivo.");
@@ -242,7 +318,10 @@ export function ImportTab() {
     try {
       const response = await fetch("/api/imports/confirm", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": confirmKeyRef.current,
+        },
         body: JSON.stringify({
           fileName: preview.fileName,
           totalRows: preview.totalRows,
@@ -257,27 +336,43 @@ export function ImportTab() {
         setError(data.error ?? "Não foi possível confirmar o lote.");
         return;
       }
-
-
-      if (!data.flowId || !data.flowName) {
-        setError("A importação foi concluída, mas o fluxo não pôde ser aberto.");
+      if (!data.taskId) {
+        setError("A tarefa de importação não pôde ser iniciada.");
         return;
       }
 
       setPreview(null);
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-
-      setCreatedFlow({
-        id: data.flowId,
-        name: data.flowName,
-        importedRows: data.importedRows ?? 0,
-        importedContributions: data.importedContributions ?? 0,
-        status: "RASCUNHO",
-      });
+      setImportTask(null);
+      setCreatedFlow(null);
+      setTaskId(data.taskId);
+      localStorage.setItem("fluxo-import-task", data.taskId);
+      window.dispatchEvent(new Event("fluxo-import-task"));
       setStep("flow");
     } catch {
       setError("Falha de conexão ao confirmar o lote.");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  async function retryImport() {
+    if (!importTask) return;
+    setConfirming(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/imports/tasks/${importTask.id}/retry`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error ?? "Não foi possível reprocessar a importação.");
+        return;
+      }
+      setImportTask({ ...importTask, status: "PENDENTE", error: "" });
+    } catch {
+      setError("Falha de conexão ao reprocessar a importação.");
     } finally {
       setConfirming(false);
     }
@@ -404,6 +499,58 @@ export function ImportTab() {
                 </button>
                 <button className="button secondary" type="button" onClick={() => setStep("convert")} disabled={loading}>
                   Voltar para conversão
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "flow" &&
+          importTask &&
+          (importTask.status === "PENDENTE" || importTask.status === "PROCESSANDO") ? (
+            <div className="import-box">
+              <span className="import-icon" aria-hidden="true"><Upload size={30} /></span>
+              <div className="import-copy">
+                <span className="eyebrow">ETAPA 3 DE 3</span>
+                <strong>
+                  Importando {importTask.processedRows} de {importTask.validRows} pagamento(s)...
+                </strong>
+                <span className="metric-track">
+                  <i
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (importTask.processedRows / Math.max(importTask.validRows, 1)) * 100,
+                      )}%`,
+                    }}
+                  />
+                </span>
+                <span className="muted">
+                  Você pode trocar de aba; avisaremos quando a importação terminar.
+                </span>
+              </div>
+              <span className="status PENDENTE">
+                {importTask.status === "PENDENTE" ? "Na fila" : "Processando"}
+              </span>
+            </div>
+          ) : null}
+
+          {step === "flow" && importTask?.status === "FALHOU" ? (
+            <div className="import-box">
+              <span className="import-icon" aria-hidden="true"><AlertTriangle size={30} /></span>
+              <div className="import-copy">
+                <span className="eyebrow">IMPORTAÇÃO INTERROMPIDA</span>
+                <div className="alert error" role="alert">
+                  {importTask.error || "A importação falhou."}
+                </div>
+              </div>
+              <div className="button-row import-actions">
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => void retryImport()}
+                  disabled={confirming}
+                >
+                  {confirming ? "Reprocessando..." : "Tentar novamente"}
                 </button>
               </div>
             </div>
