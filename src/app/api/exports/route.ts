@@ -55,8 +55,8 @@ export async function GET(request: Request) {
         { header: "Conta", key: "work", width: 32 }, { header: "Responsável", key: "responsible", width: 28 },
         { header: "Aportes", key: "contributions", width: 16 }, { header: "Comprometido", key: "committed", width: 16 }, { header: "Saldo", key: "balance", width: 16 },
       ]);
-      const works = await prisma.work.findMany({ include: { responsibleUser: true, contributions: { where: { importBatch: { createdAt: { gte: from, lte: to } } } }, payments: { where: { currentDueDate: { gte: from, lte: to }, status: { notIn: [PaymentStatus.REPROVADO, PaymentStatus.CANCELADO, PaymentStatus.TRANSFERIDO] } } } }, orderBy: { name: "asc" } });
-      worksheet.addRows(works.map((work) => { const contributions = work.contributions.reduce((sum, item) => sum + Number(item.amount), 0); const committed = work.payments.reduce((sum, item) => sum + Number(item.amount), 0); return { work: work.name, responsible: work.responsibleUser?.name ?? "Não definido", contributions, committed, balance: contributions - committed }; }));
+      const works = await prisma.work.findMany({ include: { approvers: { include: { user: true } }, contributions: { where: { importBatch: { createdAt: { gte: from, lte: to } } } }, payments: { where: { currentDueDate: { gte: from, lte: to }, status: { notIn: [PaymentStatus.REPROVADO, PaymentStatus.CANCELADO, PaymentStatus.TRANSFERIDO] } } } }, orderBy: { name: "asc" } });
+      worksheet.addRows(works.map((work) => { const contributions = work.contributions.reduce((sum, item) => sum + Number(item.amount), 0); const committed = work.payments.reduce((sum, item) => sum + Number(item.amount), 0); return { work: work.name, responsible: work.approvers.map(({ user }) => user.name).join(", ") || "Não definido", contributions, committed, balance: contributions - committed }; }));
     } else if (query.type === "advances") {
       configureWorksheet(worksheet, [
         { header: "Colaborador", key: "collaborator", width: 28 }, { header: "Descrição", key: "description", width: 40 }, { header: "Conta", key: "work", width: 28 },

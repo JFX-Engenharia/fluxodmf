@@ -278,16 +278,37 @@ export async function DELETE(request: Request) {
 
     // Quem ja importou ou agiu sobre pagamentos nao pode sumir sem quebrar o
     // historico; nesse caso a conta e desativada em vez de removida.
-    const [payments, actions, imports, flowEvents, requestedPayments, reviewedRequests] = await Promise.all([
+    const [
+      payments,
+      actions,
+      imports,
+      flowEvents,
+      requestedPayments,
+      reviewedRequests,
+      workApprovals,
+      requestApprovals,
+    ] = await Promise.all([
       prisma.payment.count({ where: { createdById: target.id } }),
       prisma.paymentAction.count({ where: { actorId: target.id } }),
       prisma.importBatch.count({ where: { importedById: target.id } }),
       prisma.dailyFlowEvent.count({ where: { actorId: target.id } }),
       prisma.paymentRequest.count({ where: { requestedById: target.id } }),
       prisma.paymentRequest.count({ where: { reviewedById: target.id } }),
+      prisma.workApprover.count({ where: { userId: target.id } }),
+      prisma.paymentRequestApproval.count({ where: { approverId: target.id } }),
     ]);
 
-    if (payments + actions + imports + flowEvents + requestedPayments + reviewedRequests > 0) {
+    if (
+      payments +
+        actions +
+        imports +
+        flowEvents +
+        requestedPayments +
+        reviewedRequests +
+        workApprovals +
+        requestApprovals >
+      0
+    ) {
       const user = await prisma.user.update({
         where: { id: target.id },
         data: { status: UserStatus.INATIVO, reviewedById: actor.id, reviewedAt: new Date() },

@@ -115,9 +115,10 @@ model User {
   flowEvents    DailyFlowEvent[]  @relation("DailyFlowEventActor")
   approvals     PaymentApproval[]
   advances      Advance[]         @relation("AdvanceCreatedBy")
-  responsibleWorks Work[] @relation("WorkResponsible")
-  paymentRequests   PaymentRequest[] @relation("PaymentRequestRequestedBy")
+  workApprovals WorkApprover[]
+  paymentRequests PaymentRequest[] @relation("PaymentRequestRequestedBy")
   reviewedPaymentRequests PaymentRequest[] @relation("PaymentRequestReviewedBy")
+  requestApprovals PaymentRequestApproval[] @relation("PaymentRequestApprover")
   sessions      UserSession[]
   loginEvents   LoginEvent[]
   authProvider  String?
@@ -177,10 +178,32 @@ model Work {
   paymentAllocations PaymentAllocation[]
   advances          Advance[]
   paymentRequests    PaymentRequest[]
-  responsibleUserId  String?
-  responsibleUser    User?          @relation("WorkResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  approvers          WorkApprover[]
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+}
+
+model WorkApprover {
+  workId String
+  userId String
+  work   Work @relation(fields: [workId], references: [id], onDelete: Cascade)
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workId, userId])
+  @@index([userId])
+}
+
+model PaymentRequestApproval {
+  id         String         @id @default(cuid())
+  requestId  String
+  request    PaymentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approverId String
+  approver   User           @relation("PaymentRequestApprover", fields: [approverId], references: [id])
+  approvedAt DateTime?
+  createdAt  DateTime       @default(now())
+
+  @@unique([requestId, approverId])
+  @@index([approverId, approvedAt])
 }
 
 model UserWork {
@@ -415,6 +438,7 @@ model PaymentRequest {
   reviewedAt     DateTime?
   reviewReason   String?
   attachments    PaymentRequestAttachment[]
+  approvals      PaymentRequestApproval[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
