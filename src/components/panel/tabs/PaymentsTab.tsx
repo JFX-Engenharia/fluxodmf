@@ -561,25 +561,6 @@ export function PaymentsTab() {
             ) : null}
           </div>
 
-          {selectedFlow.status === "FECHADO" ? (
-            <section className="approval-stats">
-              <div className="approval-stat approval-stat-success">
-                <span>Aprovados</span>
-                <strong>{selectedFlow.summary.approved.count}</strong>
-                <small>{money(selectedFlow.summary.approved.amount)}</small>
-              </div>
-              <div className="approval-stat approval-stat-danger">
-                <span>Reprovados</span>
-                <strong>{selectedFlow.summary.rejected.count}</strong>
-                <small>{money(selectedFlow.summary.rejected.amount)}</small>
-              </div>
-              <div className="approval-stat approval-stat-warning">
-                <span>Remarcados</span>
-                <strong>{selectedFlow.summary.transferred.count}</strong>
-                <small>{money(selectedFlow.summary.transferred.amount)}</small>
-              </div>
-            </section>
-          ) : null}
         </section>
       ) : flowsLoading ? (
         <div className="panel pad">Carregando fluxos diários...</div>

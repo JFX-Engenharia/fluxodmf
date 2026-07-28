@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import {
+  BadgeCheck,
   BanknoteArrowUp,
   BarChart3,
   CalendarRange,
@@ -23,6 +24,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { GlobalSearch } from "@/components/panel/GlobalSearch";
 import { PanelContext, type PanelUser } from "@/components/panel/PanelContext";
 import { ThemeSwitcher } from "@/components/panel/ThemeSwitcher";
+import { ApprovedPaymentsTab } from "@/components/panel/tabs/ApprovedPaymentsTab";
 import { DashboardTab } from "@/components/panel/tabs/DashboardTab";
 import { AdvancesTab } from "@/components/panel/tabs/AdvancesTab";
 import { AnalyticsTab } from "@/components/panel/tabs/AnalyticsTab";
@@ -87,6 +89,15 @@ const tabDefinitions: TabDefinition[] = [
     section: "PAINEL",
     icon: FileSpreadsheet,
     Component: ImportTab,
+  },
+  {
+    id: "aprovados",
+    label: "Aprovados",
+    title: "Pagamentos aprovados",
+    subtitle: "Aprovações dos fluxos importados por você",
+    section: "OPERAÇÃO",
+    icon: BadgeCheck,
+    Component: ApprovedPaymentsTab,
   },
   {
     id: "solicitacoes",
