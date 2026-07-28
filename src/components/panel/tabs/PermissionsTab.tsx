@@ -31,6 +31,7 @@ const tabLabels: Record<(typeof TAB_IDS)[number], string> = {
   indicadores: "Indicadores",
   calendario: "Calendário",
   importar: "Importação",
+  aprovados: "Aprovados",
   solicitacoes: "Solicitações",
   conciliacao: "Conciliação",
   pagamentos: "Pagamentos",

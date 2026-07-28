@@ -150,60 +150,88 @@ export async function POST(request: Request) {
         },
       });
 
+      const accountLabels = new Map<string, string>();
       for (const row of rowsToImport) {
-        const payment = await tx.payment.create({
-          data: {
-            externalReference: row.externalReference,
-            supplierName: row.supplierName,
-            description: row.description,
-            amount: row.amount,
-            category: row.category,
-            originalDueDate: dateFromIsoDay(row.originalDueDate),
-            currentDueDate: dateFromIsoDay(row.currentDueDate),
-            costCenter: row.costCenter,
-            uniqueKey: row.uniqueKey,
-            workId: await resolveWorkId(row.costCenter),
-            importBatchId: importBatch.id,
-            createdById: user.id,
-            status: PaymentStatus.PENDENTE,
-          },
-        });
-
-        await tx.paymentAction.create({
-          data: {
-            paymentId: payment.id,
-            actorId: user.id,
-            type: ActionType.IMPORTAR,
-            newStatus: PaymentStatus.PENDENTE,
-            note: `Importado no fluxo ${flowName}`,
-          },
-        });
-
-        const allocationRule = chooseAllocationRule(payment, allocationRules);
-        if (allocationRule) {
-          await tx.paymentAllocation.createMany({
-            data: allocationRows(payment.amount, allocationRule.splits).map((split) => ({
-              paymentId: payment.id,
-              ...split,
-              source: AllocationSource.REGRA,
-            })),
-          });
-        }
+        accountLabels.set(normalizeName(row.costCenter), row.costCenter);
+      }
+      for (const contribution of validContributions) {
+        accountLabels.set(normalizeName(contribution.accountLabel), contribution.accountLabel);
+      }
+      for (const accountLabel of accountLabels.values()) {
+        await resolveWorkId(accountLabel);
       }
 
-      for (const contribution of validContributions) {
-        await tx.contribution.create({
-          data: {
+      function resolvedWorkId(accountLabel: string) {
+        const workId = resolved.get(normalizeName(accountLabel));
+        if (!workId) {
+          throw new ApiError(400, `Não foi possível resolver a conta ${accountLabel}.`);
+        }
+        return workId;
+      }
+
+      // Uma importacao real pode ter centenas de linhas. Inserir pagamento,
+      // historico e rateio linha a linha estoura o timeout da transacao quando
+      // o banco esta em outra rede; cada etapa abaixo usa uma unica operacao.
+      const payments = await tx.payment.createManyAndReturn({
+        data: rowsToImport.map((row) => ({
+          externalReference: row.externalReference,
+          supplierName: row.supplierName,
+          description: row.description,
+          amount: row.amount,
+          category: row.category,
+          originalDueDate: dateFromIsoDay(row.originalDueDate),
+          currentDueDate: dateFromIsoDay(row.currentDueDate),
+          costCenter: row.costCenter,
+          uniqueKey: row.uniqueKey,
+          workId: resolvedWorkId(row.costCenter),
+          importBatchId: importBatch.id,
+          createdById: user.id,
+          status: PaymentStatus.PENDENTE,
+        })),
+        select: {
+          id: true,
+          amount: true,
+          category: true,
+          supplierName: true,
+        },
+      });
+
+      await tx.paymentAction.createMany({
+        data: payments.map((payment) => ({
+          paymentId: payment.id,
+          actorId: user.id,
+          type: ActionType.IMPORTAR,
+          newStatus: PaymentStatus.PENDENTE,
+          note: `Importado no fluxo ${flowName}`,
+        })),
+      });
+
+      const allocations = payments.flatMap((payment) => {
+        const allocationRule = chooseAllocationRule(payment, allocationRules);
+        if (!allocationRule) return [];
+        return allocationRows(payment.amount, allocationRule.splits).map((split) => ({
+          paymentId: payment.id,
+          ...split,
+          source: AllocationSource.REGRA,
+        }));
+      });
+      if (allocations.length > 0) {
+        await tx.paymentAllocation.createMany({ data: allocations });
+      }
+
+      if (validContributions.length > 0) {
+        await tx.contribution.createMany({
+          data: validContributions.map((contribution) => ({
             accountLabel: contribution.accountLabel,
             amount: contribution.amount,
-            workId: await resolveWorkId(contribution.accountLabel),
+            workId: resolvedWorkId(contribution.accountLabel),
             importBatchId: importBatch.id,
-          },
+          })),
         });
       }
 
       return { importBatch, dailyFlow, createdAccounts };
-    });
+    }, { timeout: 30_000 });
 
     const { importBatch, dailyFlow, createdAccounts } = batch;
 

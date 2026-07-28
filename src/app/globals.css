@@ -2853,3 +2853,115 @@ button,
     flex-direction: column;
   }
 }
+
+/* Pagamentos aprovados: alinhamento entre resumo, filtros, cabeçalho e colunas. */
+.approved-payments-filters {
+  align-items: flex-end;
+}
+
+.approved-payments-filters .field {
+  flex: 1 1 360px;
+  min-width: 260px;
+}
+
+.approved-payments-filters .input {
+  width: 100%;
+}
+
+.approved-payments-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.approved-payments-header {
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.approved-payments-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.approved-payments-header .muted {
+  display: block;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.approved-payments-table .approved-supplier-column {
+  width: 28%;
+}
+
+.approved-payments-table .approved-flow-column {
+  width: 18%;
+}
+
+.approved-payments-table .approved-account-column {
+  width: 18%;
+}
+
+.approved-payments-table .approved-date-column {
+  width: 11%;
+}
+
+.approved-payments-table .approved-approval-column {
+  width: 17%;
+}
+
+.approved-payments-table .approved-amount-column {
+  width: 8%;
+}
+
+.approved-payments-table td {
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.approved-payments-table td > strong,
+.approved-payments-table td > small {
+  display: block;
+}
+
+.approved-payments-table td > small {
+  margin-top: 3px;
+}
+
+.approved-payments-table .approved-payment-date {
+  white-space: nowrap;
+}
+
+.approved-payments-table .approved-payment-approval small {
+  margin-top: 6px;
+}
+
+@media (max-width: 760px) {
+  .approved-payments-filters .field {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .approved-payments-filter-actions {
+    width: 100%;
+  }
+
+  .approved-payments-filter-actions .button {
+    flex: 1 1 0;
+  }
+
+  .approved-payments-header {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    box-shadow: none;
+  }
+
+  .sidebar.open {
+    box-shadow: var(--shadow);
+  }
+}
