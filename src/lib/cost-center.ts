@@ -21,6 +21,19 @@ export function normalizeName(value: unknown) {
     .toLowerCase();
 }
 
+/** Contas distintas por cidade que a diretoria trata como uma só na memória de cálculo. */
+const ACCOUNT_MERGES: Array<{ prefix: string; canonical: string }> = [
+  { prefix: "REISOLAMENTO", canonical: "REISOLAMENTO" },
+];
+
+export function canonicalAccountLabel(label: string): string {
+  const normalized = normalizeName(label);
+  const merge = ACCOUNT_MERGES.find((rule) =>
+    normalized.startsWith(normalizeName(rule.prefix)),
+  );
+  return merge ? merge.canonical : label;
+}
+
 function parseAliases(raw: string) {
   try {
     const parsed = JSON.parse(raw);

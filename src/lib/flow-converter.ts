@@ -11,7 +11,7 @@
  */
 
 import ExcelJS from "exceljs";
-import { matchWork, normalizeName, type WorkMatcher } from "@/lib/cost-center";
+import { canonicalAccountLabel, matchWork, normalizeName, type WorkMatcher } from "@/lib/cost-center";
 import { buildUniqueKey } from "@/lib/import-parser";
 import { brDate, findColumn, isoDate, parseDate, parseMoney, readRawGrid } from "@/lib/spreadsheet";
 
@@ -171,7 +171,7 @@ export async function convertRawFile(
       amount: Number.isNaN(amount) ? 0 : amount,
       category,
       costCenter,
-      accountLabel: work?.name ?? costCenter,
+      accountLabel: canonicalAccountLabel(work?.name ?? costCenter),
       isNewWork: Boolean(costCenter) && !work,
       errors,
     };
@@ -179,18 +179,19 @@ export async function convertRawFile(
 
   const validRows = rows.filter((row) => row.errors.length === 0);
 
-  // Agrupa igual ao importador: conta cadastrada pelo id, conta nova pelo nome
-  // normalizado, para "Ediser" e "EDISER" nao virarem duas linhas no resumo.
+  // Agrupa pelo rótulo canônico: contas por cidade podem formar uma única
+  // linha na memória de cálculo sem deixar de ser obras distintas no cadastro.
   const grouped = new Map<string, ConvertedAccount>();
   for (const row of validRows) {
     const work = matchWork(row.costCenter, works);
-    const key = work?.id ?? `nome:${normalizeName(row.costCenter)}`;
+    const accountLabel = canonicalAccountLabel(work?.name ?? row.costCenter);
+    const key = normalizeName(accountLabel);
     const current = grouped.get(key);
     if (current) {
       current.computedAmount += row.amount;
     } else {
       grouped.set(key, {
-        accountLabel: row.accountLabel,
+        accountLabel,
         computedAmount: row.amount,
         isNewWork: row.isNewWork,
       });

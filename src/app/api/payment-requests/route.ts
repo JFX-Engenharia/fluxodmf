@@ -35,10 +35,15 @@ function serializeRequest(request: {
   reviewedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  work: { id: string; name: string; responsibleUser: { id: string; name: string } | null };
+  work: {
+    id: string;
+    name: string;
+    approvers: Array<{ user: { id: string; name: string } }>;
+  };
   requestedBy: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
   attachments: Array<{ id: string; fileName: string; mimeType: string; size: number }>;
+  approvals: Array<{ approvedAt: Date | null; approver: { id: string; name: string } }>;
 }) {
   return {
     id: request.id,
@@ -55,10 +60,14 @@ function serializeRequest(request: {
     work: {
       id: request.work.id,
       name: request.work.name,
-      responsible: request.work.responsibleUser,
+      responsibles: request.work.approvers.map(({ user }) => user),
     },
     requestedBy: request.requestedBy,
     reviewedBy: request.reviewedBy,
+    approvals: request.approvals.map((approval) => ({
+      approver: approval.approver,
+      approvedAt: approval.approvedAt?.toISOString() ?? null,
+    })),
     attachments: request.attachments.map((attachment) => ({
       id: attachment.id,
       fileName: attachment.fileName,
@@ -70,10 +79,22 @@ function serializeRequest(request: {
 }
 
 const include = {
-  work: { select: { id: true, name: true, responsibleUser: { select: { id: true, name: true } } } },
+  work: {
+    select: {
+      id: true,
+      name: true,
+      approvers: { select: { user: { select: { id: true, name: true } } } },
+    },
+  },
   requestedBy: { select: { id: true, name: true } },
   reviewedBy: { select: { id: true, name: true } },
   attachments: { select: { id: true, fileName: true, mimeType: true, size: true } },
+  approvals: {
+    select: {
+      approvedAt: true,
+      approver: { select: { id: true, name: true } },
+    },
+  },
 } as const;
 
 export async function GET() {
@@ -85,7 +106,7 @@ export async function GET() {
         : {
             OR: [
               { requestedById: actor.id },
-              { work: { responsibleUserId: actor.id } },
+              { approvals: { some: { approverId: actor.id } } },
             ],
           };
     const requests = await prisma.paymentRequest.findMany({
@@ -124,14 +145,19 @@ export async function POST(request: Request) {
 
     const work = await prisma.work.findUnique({
       where: { id: body.workId },
-      include: { responsibleUser: { select: { id: true, status: true } } },
+      include: {
+        approvers: {
+          include: { user: { select: { id: true, status: true } } },
+        },
+      },
     });
     if (!work?.active) throw new ApiError(404, "Obra não encontrada ou inativa.");
     if (actor.role !== Role.ADMINISTRADOR && !actor.works.some(({ work: assignedWork }) => assignedWork.id === work.id)) {
       throw new ApiError(403, "Você só pode solicitar pagamentos para obras vinculadas a você.");
     }
-    if (!work.responsibleUser || work.responsibleUser.status !== UserStatus.ATIVO) {
-      throw new ApiError(409, "Esta obra ainda não possui um responsável ativo para aprovar a solicitação.");
+    const activeApprovers = work.approvers.filter(({ user }) => user.status === UserStatus.ATIVO);
+    if (!activeApprovers.length) {
+      throw new ApiError(409, "Esta obra ainda não possui responsáveis ativos para aprovar a solicitação.");
     }
 
     const attachmentData = await Promise.all(
@@ -152,6 +178,9 @@ export async function POST(request: Request) {
         workId: work.id,
         requestedById: actor.id,
         attachments: { create: attachmentData },
+        approvals: {
+          create: activeApprovers.map(({ userId }) => ({ approverId: userId })),
+        },
       },
       include,
     });

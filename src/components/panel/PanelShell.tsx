@@ -22,6 +22,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
 import { GlobalSearch } from "@/components/panel/GlobalSearch";
+import { ImportTaskWatcher } from "@/components/panel/ImportTaskWatcher";
 import { PanelContext, type PanelUser } from "@/components/panel/PanelContext";
 import { ThemeSwitcher } from "@/components/panel/ThemeSwitcher";
 import { ApprovedPaymentsTab } from "@/components/panel/tabs/ApprovedPaymentsTab";
@@ -250,6 +251,7 @@ export function PanelShell() {
 
   return (
     <PanelContext.Provider value={{ user, tabs, goToTab }}>
+      {tabs.includes("importar") ? <ImportTaskWatcher /> : null}
       <div className="app-shell">
         <a className="skip-link" href="#conteudo-principal">
           Ir para o conteúdo

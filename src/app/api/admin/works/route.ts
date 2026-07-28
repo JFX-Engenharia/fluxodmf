@@ -12,7 +12,7 @@ const workSchema = z.object({
   slug: z.string().min(2).optional(),
   aliases: z.array(z.string()).default([]),
   active: z.boolean().optional(),
-  responsibleUserId: z.string().nullable().optional(),
+  responsibleUserIds: z.array(z.string()).default([]),
 });
 
 type WorkRecord = {
@@ -22,36 +22,36 @@ type WorkRecord = {
   costCenterAliases: string;
   active: boolean;
   createdAt: Date;
-  responsibleUserId: string | null;
-  responsibleUser?: { id: string; name: string } | null;
   updatedAt: Date;
+  approvers?: Array<{ user: { id: string; name: string } }>;
 };
 
 function serializeWork(work: WorkRecord) {
+  const { approvers = [], ...record } = work;
   return {
-    ...work,
-    responsibleUser: work.responsibleUser
-      ? { id: work.responsibleUser.id, name: work.responsibleUser.name }
-      : null,
+    ...record,
+    responsibleUsers: approvers.map(({ user }) => user),
     aliases: JSON.parse(work.costCenterAliases || "[]"),
     createdAt: work.createdAt.toISOString(),
     updatedAt: work.updatedAt.toISOString(),
   };
 }
 
-async function assertResponsibleUser(id: string | null | undefined) {
-  if (!id) return;
-  const user = await prisma.user.findFirst({
+async function assertResponsibleUsers(ids: string[]) {
+  const uniqueIds = [...new Set(ids)];
+  if (!uniqueIds.length) return uniqueIds;
+  const users = await prisma.user.findMany({
     where: {
-      id,
+      id: { in: uniqueIds },
       status: UserStatus.ATIVO,
       role: { in: [Role.GESTOR, Role.ADMINISTRADOR] },
     },
     select: { id: true },
   });
-  if (!user) {
-    throw new ApiError(400, "O responsável precisa ser um gestor ou administrador ativo.");
+  if (users.length !== uniqueIds.length) {
+    throw new ApiError(400, "Todos os responsáveis precisam ser gestores ou administradores ativos.");
   }
+  return uniqueIds;
 }
 
 export async function GET() {
@@ -59,7 +59,7 @@ export async function GET() {
     await requireUser();
     const works = await prisma.work.findMany({
       orderBy: { name: "asc" },
-      include: { responsibleUser: { select: { id: true, name: true } } },
+      include: { approvers: { include: { user: { select: { id: true, name: true } } } } },
     });
     return ok({ works: works.map(serializeWork) });
   } catch (error) {
@@ -71,19 +71,28 @@ export async function POST(request: Request) {
   try {
     const actor = await requireTab("permissoes");
     const body = workSchema.parse(await request.json());
-
-    await assertResponsibleUser(body.responsibleUserId);
+    const responsibleUserIds = await assertResponsibleUsers(body.responsibleUserIds);
     const existingSlugs = new Set(
       (await prisma.work.findMany({ select: { slug: true } })).map((work) => work.slug),
     );
-    const work = await prisma.work.create({
-      data: {
-        name: body.name,
-        slug: body.slug?.trim() || uniqueSlug(body.name, existingSlugs),
-        costCenterAliases: JSON.stringify(body.aliases),
-        active: body.active ?? true,
-        responsibleUserId: body.responsibleUserId ?? null,
-      },
+    const work = await prisma.$transaction(async (tx) => {
+      const created = await tx.work.create({
+        data: {
+          name: body.name,
+          slug: body.slug?.trim() || uniqueSlug(body.name, existingSlugs),
+          costCenterAliases: JSON.stringify(body.aliases),
+          active: body.active ?? true,
+        },
+      });
+      if (responsibleUserIds.length) {
+        await tx.workApprover.createMany({
+          data: responsibleUserIds.map((userId) => ({ workId: created.id, userId })),
+        });
+      }
+      return tx.work.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { approvers: { include: { user: { select: { id: true, name: true } } } } },
+      });
     });
 
     await auditLog({
@@ -103,17 +112,27 @@ export async function PATCH(request: Request) {
   try {
     const actor = await requireTab("permissoes");
     const body = workSchema.extend({ id: z.string() }).parse(await request.json());
-
-    await assertResponsibleUser(body.responsibleUserId);
-    const work = await prisma.work.update({
-      where: { id: body.id },
-      data: {
-        name: body.name,
-        slug: body.slug,
-        costCenterAliases: JSON.stringify(body.aliases),
-        active: body.active ?? true,
-        responsibleUserId: body.responsibleUserId ?? null,
-      },
+    const responsibleUserIds = await assertResponsibleUsers(body.responsibleUserIds);
+    const work = await prisma.$transaction(async (tx) => {
+      await tx.work.update({
+        where: { id: body.id },
+        data: {
+          name: body.name,
+          slug: body.slug,
+          costCenterAliases: JSON.stringify(body.aliases),
+          active: body.active ?? true,
+        },
+      });
+      await tx.workApprover.deleteMany({ where: { workId: body.id } });
+      if (responsibleUserIds.length) {
+        await tx.workApprover.createMany({
+          data: responsibleUserIds.map((userId) => ({ workId: body.id, userId })),
+        });
+      }
+      return tx.work.findUniqueOrThrow({
+        where: { id: body.id },
+        include: { approvers: { include: { user: { select: { id: true, name: true } } } } },
+      });
     });
 
     await auditLog({

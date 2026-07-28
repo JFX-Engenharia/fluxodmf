@@ -33,6 +33,7 @@ export async function GET() {
     const [
       users,
       works,
+      workApprovers,
       userWorks,
       importBatches,
       contributions,
@@ -49,6 +50,7 @@ export async function GET() {
       paymentAllocations,
       advances,
       paymentRequests,
+      paymentRequestApprovals,
       paymentRequestAttachments,
       dailyFlows,
       dailyFlowEvents,
@@ -71,8 +73,30 @@ export async function GET() {
         },
       }),
       prisma.work.findMany(),
+      prisma.workApprover.findMany(),
       prisma.userWork.findMany(),
-      prisma.importBatch.findMany(),
+      prisma.importBatch.findMany({
+        select: {
+          id: true,
+          fileName: true,
+          totalRows: true,
+          validRows: true,
+          invalidRows: true,
+          status: true,
+          importedById: true,
+          sourceFileName: true,
+          flowName: true,
+          processedRows: true,
+          importedRows: true,
+          importedContributions: true,
+          createdAccounts: true,
+          attempts: true,
+          error: true,
+          startedAt: true,
+          finishedAt: true,
+          createdAt: true,
+        },
+      }),
       prisma.contribution.findMany(),
       prisma.payment.findMany(),
       prisma.paymentAction.findMany(),
@@ -87,6 +111,7 @@ export async function GET() {
       prisma.paymentAllocation.findMany(),
       prisma.advance.findMany(),
       prisma.paymentRequest.findMany(),
+      prisma.paymentRequestApproval.findMany(),
       prisma.paymentRequestAttachment.findMany(),
       prisma.dailyFlow.findMany(),
       prisma.dailyFlowEvent.findMany(),
@@ -102,6 +127,7 @@ export async function GET() {
       data: asBackupValue({
         users,
         works,
+        workApprovers,
         userWorks,
         importBatches,
         contributions,
@@ -118,6 +144,7 @@ export async function GET() {
         paymentAllocations,
         advances,
         paymentRequests,
+        paymentRequestApprovals,
         paymentRequestAttachments,
         dailyFlows,
         dailyFlowEvents,
@@ -160,6 +187,7 @@ export async function POST(request: Request) {
       execute: async () => {
 
     const result = await prisma.$transaction(async (tx) => {
+      const paymentRequestApprovals = await tx.paymentRequestApproval.deleteMany();
       const paymentRequestAttachments = await tx.paymentRequestAttachment.deleteMany();
       const paymentRequests = await tx.paymentRequest.deleteMany();
       const dailyFlowEvents = await tx.dailyFlowEvent.deleteMany();
@@ -176,9 +204,11 @@ export async function POST(request: Request) {
       // Regras de rateio apontam para contas e impedem sua exclusão.
       const allocationRuleSplits = await tx.allocationRuleSplit.deleteMany();
       const userWorks = await tx.userWork.deleteMany();
+      const workApprovers = await tx.workApprover.deleteMany();
       const works = await tx.work.deleteMany();
 
       return {
+        paymentRequestApprovals: paymentRequestApprovals.count,
         paymentRequestAttachments: paymentRequestAttachments.count,
         paymentRequests: paymentRequests.count,
         dailyFlowEvents: dailyFlowEvents.count,
@@ -194,6 +224,7 @@ export async function POST(request: Request) {
         advances: advances.count,
         allocationRuleSplits: allocationRuleSplits.count,
         userWorks: userWorks.count,
+        workApprovers: workApprovers.count,
         works: works.count,
       };
     });

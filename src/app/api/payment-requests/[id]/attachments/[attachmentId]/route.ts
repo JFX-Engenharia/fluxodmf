@@ -18,14 +18,21 @@ export async function GET(
     const { id, attachmentId } = await context.params;
     const attachment = await prisma.paymentRequestAttachment.findFirst({
       where: { id: attachmentId, requestId: id },
-      include: { request: { select: { requestedById: true, work: { select: { responsibleUserId: true } } } } },
+      include: {
+        request: {
+          select: {
+            requestedById: true,
+            approvals: { select: { approverId: true } },
+          },
+        },
+      },
     });
     if (!attachment) throw new ApiError(404, "Anexo não encontrado.");
 
     const canRead =
       actor.role === Role.ADMINISTRADOR ||
       attachment.request.requestedById === actor.id ||
-      attachment.request.work.responsibleUserId === actor.id;
+      attachment.request.approvals.some(({ approverId }) => approverId === actor.id);
     if (!canRead) throw new ApiError(403, "Você não pode acessar este anexo.");
 
     return new NextResponse(new Uint8Array(attachment.data), {

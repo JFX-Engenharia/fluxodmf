@@ -33,12 +33,12 @@ export async function GET(request: Request) {
             { name: text },
             { slug: text },
             { costCenterAliases: text },
-            { responsibleUser: { is: { name: text } } },
+            { approvers: { some: { user: { name: text } } } },
           ],
         },
         take: 8,
         orderBy: { name: "asc" },
-        include: { responsibleUser: { select: { name: true } } },
+        include: { approvers: { select: { user: { select: { name: true } } } } },
       }),
       prisma.paymentRequest.findMany({
         where: {
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
               : {
                   OR: [
                     { requestedById: user.id },
-                    { work: { responsibleUserId: user.id } },
+                    { approvals: { some: { approverId: user.id } } },
                     { workId: { in: user.works.map((item) => item.workId) } },
                   ],
                 },
@@ -58,7 +58,7 @@ export async function GET(request: Request) {
                 { description: text },
                 { category: text },
                 { work: { name: text } },
-                { work: { responsibleUser: { is: { name: text } } } },
+                { work: { approvers: { some: { user: { name: text } } } } },
                 { attachments: { some: { fileName: text } } },
                 ...(amount === null ? [] : [{ amount: { equals: amount } }]),
               ],
@@ -79,7 +79,7 @@ export async function GET(request: Request) {
                 { category: text },
                 { externalReference: text },
                 { work: { name: text } },
-                { work: { responsibleUser: { is: { name: text } } } },
+                { work: { approvers: { some: { user: { name: text } } } } },
                 { attachments: { some: { OR: [{ fileName: text }, { url: text }] } } },
                 ...(amount === null ? [] : [{ amount: { equals: amount } }]),
               ],
@@ -110,7 +110,9 @@ export async function GET(request: Request) {
         id: work.id,
         type: "work" as const,
         title: work.name,
-        subtitle: work.responsibleUser ? `Responsável: ${work.responsibleUser.name}` : "Sem responsável definido",
+        subtitle: work.approvers.length
+          ? `Responsáveis: ${work.approvers.map(({ user }) => user.name).join(", ")}`
+          : "Sem responsável definido",
         tab: canAccessTab(user.role, "permissoes") ? "permissoes" as const : "dashboard" as const,
       })),
     );

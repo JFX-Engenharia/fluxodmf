@@ -21,7 +21,7 @@ type ManagedWork = {
   slug: string;
   aliases: string[];
   active: boolean;
-  responsibleUser: { id: string; name: string } | null;
+  responsibleUsers: Array<{ id: string; name: string }>;
 };
 
 type ManagedWorksResponse = { works: ManagedWork[] };
@@ -49,10 +49,15 @@ export function PermissionsTab() {
     useFetchData<ManagedWorksResponse>("/api/admin/works");
   const [busyId, setBusyId] = useState("");
   const [message, setMessage] = useState("");
-  const [newWork, setNewWork] = useState({ name: "", aliases: "", responsibleUserId: "" });
+  const [newWork, setNewWork] = useState({ name: "", aliases: "", responsibleUserIds: [] as string[] });
 
   // Solicitacao pendente ainda nao tem perfil definido: so aparece na aba Usuarios.
   const users = (data?.users ?? []).filter((item) => item.status !== "PENDENTE");
+  const approverUsers = users.filter(
+    (item) =>
+      item.status === "ATIVO" &&
+      (item.role === Role.GESTOR || item.role === Role.ADMINISTRADOR),
+  );
   const works = data?.works ?? [];
 
   async function update(id: string, body: Record<string, unknown>, successMessage: string) {
@@ -91,7 +96,10 @@ export function PermissionsTab() {
     void update(target.id, { workIds: next }, `Contas de ${target.name} atualizadas.`);
   }
 
-  async function updateResponsible(work: ManagedWork, responsibleUserId: string) {
+  async function toggleResponsible(work: ManagedWork, userId: string) {
+    const responsibleUserIds = work.responsibleUsers.some((user) => user.id === userId)
+      ? work.responsibleUsers.filter((user) => user.id !== userId).map((user) => user.id)
+      : [...work.responsibleUsers.map((user) => user.id), userId];
     setBusyId(work.id);
     setError("");
     setMessage("");
@@ -105,15 +113,15 @@ export function PermissionsTab() {
           slug: work.slug,
           aliases: work.aliases,
           active: work.active,
-          responsibleUserId: responsibleUserId || null,
+          responsibleUserIds,
         }),
       });
       const body = await response.json();
       if (!response.ok) {
-        setError(body.error ?? "Não foi possível definir o responsável.");
+        setError(body.error ?? "Não foi possível definir os responsáveis.");
         return;
       }
-      setMessage(`Responsável de ${work.name} atualizado.`);
+      setMessage(`Responsáveis de ${work.name} atualizados.`);
       reloadWorks();
     } catch {
       setError("Falha de conexão.");
@@ -137,7 +145,7 @@ export function PermissionsTab() {
             .split(",")
             .map((alias) => alias.trim())
             .filter(Boolean),
-          responsibleUserId: newWork.responsibleUserId || null,
+          responsibleUserIds: newWork.responsibleUserIds,
         }),
       });
       const body = await response.json();
@@ -145,7 +153,7 @@ export function PermissionsTab() {
         setError(body.error ?? "Não foi possível criar a conta.");
         return;
       }
-      setNewWork({ name: "", aliases: "", responsibleUserId: "" });
+      setNewWork({ name: "", aliases: "", responsibleUserIds: [] });
       setMessage(`Conta ${body.work.name} criada.`);
       reloadWorks();
       reload();
@@ -313,22 +321,30 @@ export function PermissionsTab() {
             />
           </div>
           <div className="field">
-            <label htmlFor="new-work-responsible">Responsável pela aprovação</label>
-            <select
-              className="select"
-              id="new-work-responsible"
-              value={newWork.responsibleUserId}
-              onChange={(event) => setNewWork({ ...newWork, responsibleUserId: event.target.value })}
-            >
-              <option value="">Definir depois</option>
-              {users
-                .filter((item) => item.role === Role.GESTOR || item.role === Role.ADMINISTRADOR)
-                .map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} ({roleLabels[item.role]})
-                  </option>
-                ))}
-            </select>
+            <span>Responsáveis pela aprovação</span>
+            <div className="checkbox-grid">
+              {approverUsers.map((item) => (
+                <label className="checkbox-line" key={item.id}>
+                  <input
+                    type="checkbox"
+                    checked={newWork.responsibleUserIds.includes(item.id)}
+                    onChange={() =>
+                      setNewWork({
+                        ...newWork,
+                        responsibleUserIds: newWork.responsibleUserIds.includes(item.id)
+                          ? newWork.responsibleUserIds.filter((id) => id !== item.id)
+                          : [...newWork.responsibleUserIds, item.id],
+                      })
+                    }
+                  />
+                  {item.name} ({roleLabels[item.role]})
+                </label>
+              ))}
+              {!approverUsers.length ? <span className="muted">Não definido</span> : null}
+            </div>
+            <small className="muted">
+              As pessoas indicadas precisam todas aprovar as solicitações de pagamento daquela obra.
+            </small>
           </div>
           <div className="field span-2">
             <label htmlFor="new-work-aliases">Apelidos usados na planilha</label>
@@ -351,7 +367,7 @@ export function PermissionsTab() {
         <div className="section-header">
           <div>
             <h2>Responsáveis pelas obras</h2>
-            <span className="muted">A pessoa indicada aprova as solicitações de pagamento daquela obra.</span>
+            <span className="muted">As pessoas indicadas precisam todas aprovar as solicitações de pagamento daquela obra.</span>
           </div>
         </div>
         <div className="panel">
@@ -360,7 +376,7 @@ export function PermissionsTab() {
               <thead>
                 <tr>
                   <th>Obra</th>
-                  <th>Responsável pela aprovação</th>
+                  <th>Responsáveis pela aprovação</th>
                 </tr>
               </thead>
               <tbody>
@@ -368,22 +384,20 @@ export function PermissionsTab() {
                   <tr key={work.id}>
                     <td>{work.name}</td>
                     <td>
-                      <select
-                        className="select"
-                        value={work.responsibleUser?.id ?? ""}
-                        disabled={busyId === work.id}
-                        onChange={(event) => void updateResponsible(work, event.target.value)}
-                        aria-label={`Responsável por ${work.name}`}
-                      >
-                        <option value="">Não definido</option>
-                        {users
-                          .filter((item) => item.role === Role.GESTOR || item.role === Role.ADMINISTRADOR)
-                          .map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {item.name} ({roleLabels[item.role]})
-                            </option>
-                          ))}
-                      </select>
+                      <div className="checkbox-grid">
+                        {approverUsers.map((item) => (
+                          <label className="checkbox-line" key={item.id}>
+                            <input
+                              type="checkbox"
+                              checked={work.responsibleUsers.some((user) => user.id === item.id)}
+                              disabled={busyId === work.id}
+                              onChange={() => void toggleResponsible(work, item.id)}
+                            />
+                            {item.name} ({roleLabels[item.role]})
+                          </label>
+                        ))}
+                        {!work.responsibleUsers.length ? <span className="muted">Não definido</span> : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

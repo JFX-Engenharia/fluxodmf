@@ -114,6 +114,8 @@ export async function POST(request: Request) {
         conciliadas: result.totals.matched,
         pendentes: result.totals.pending,
         valorPendente: result.totals.pendingAmount,
+        semCompraNoCartao: result.totals.unmatchedInternal,
+        valorSemCompraNoCartao: result.totals.unmatchedInternalAmount,
       },
     });
 

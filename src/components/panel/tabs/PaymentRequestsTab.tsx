@@ -19,10 +19,11 @@ type PaymentRequest = {
   reviewReason: string | null;
   reviewedAt: string | null;
   createdAt: string;
-  work: { id: string; name: string; responsible: { id: string; name: string } | null };
+  work: { id: string; name: string; responsibles: Array<{ id: string; name: string }> };
   requestedBy: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
   attachments: Array<{ id: string; fileName: string; mimeType: string; size: number; url: string }>;
+  approvals: Array<{ approver: { id: string; name: string }; approvedAt: string | null }>;
 };
 type RequestsResponse = { requests: PaymentRequest[] };
 type WorksResponse = { works: Array<{ id: string; name: string; active: boolean }> };
@@ -53,7 +54,10 @@ export function PaymentRequestsTab() {
   const pendingReview = (data?.requests ?? []).filter(
     (paymentRequest) =>
       paymentRequest.status === "PENDENTE" &&
-      (user.role === Role.ADMINISTRADOR || paymentRequest.work.responsible?.id === user.id),
+      (user.role === Role.ADMINISTRADOR ||
+        paymentRequest.approvals.some(
+          (approval) => approval.approver.id === user.id && approval.approvedAt === null,
+        )),
   );
 
   async function submit(event: FormEvent) {
@@ -77,7 +81,7 @@ export function PaymentRequestsTab() {
       }
       setForm({ supplierName: "", description: "", amount: "", dueDate: "", category: "", workId: "" });
       setFiles([]);
-      setMessage("Solicitação enviada ao responsável pela obra.");
+      setMessage("Solicitação enviada aos responsáveis pela obra.");
       reload();
     } catch {
       setError("Falha de conexão ao enviar a solicitação.");
@@ -105,7 +109,13 @@ export function PaymentRequestsTab() {
         return;
       }
       setMessage(
-        action === "approve" ? "Solicitação aprovada." : action === "reject" ? "Solicitação reprovada." : "Solicitação cancelada.",
+        action === "approve"
+          ? body.status === "PENDENTE"
+            ? "Aprovação registrada. Aguardando os demais responsáveis."
+            : "Solicitação aprovada."
+          : action === "reject"
+            ? "Solicitação reprovada."
+            : "Solicitação cancelada.",
       );
       reload();
     } catch {
@@ -121,7 +131,7 @@ export function PaymentRequestsTab() {
       {message ? <div className="alert success" role="status">{message}</div> : null}
 
       <section className="panel pad">
-        <div className="section-header"><div><h2><FilePlus2 size={20} /> Nova solicitação</h2><span className="muted">O responsável da obra recebe a solicitação antes de ela entrar no fluxo de pagamentos.</span></div></div>
+        <div className="section-header"><div><h2><FilePlus2 size={20} /> Nova solicitação</h2><span className="muted">Os responsáveis da obra recebem a solicitação antes de ela entrar no fluxo de pagamentos.</span></div></div>
         <form className="form-grid two" onSubmit={submit}>
           <div className="field"><label htmlFor="request-work">Obra</label><select className="select" id="request-work" value={form.workId} onChange={(event) => setForm({ ...form, workId: event.target.value })} required><option value="">Selecione</option>{works.map((work) => <option key={work.id} value={work.id}>{work.name}</option>)}</select></div>
           <div className="field"><label htmlFor="request-supplier">Fornecedor</label><input className="input" id="request-supplier" value={form.supplierName} onChange={(event) => setForm({ ...form, supplierName: event.target.value })} required /></div>
@@ -134,16 +144,153 @@ export function PaymentRequestsTab() {
         </form>
       </section>
 
-      {pendingReview.length ? <section className="section"><div className="section-header"><div><h2>Para sua aprovação</h2><span className="muted">Solicitações das obras sob sua responsabilidade.</span></div></div><RequestTable requests={pendingReview} userId={user.id} busy={busy} onDecide={decide} /></section> : null}
-      <section className="section"><div className="section-header"><h2>Minhas solicitações e acompanhamentos</h2></div><RequestTable requests={data?.requests ?? []} userId={user.id} busy={busy} loading={loading} onDecide={decide} /></section>
+      {pendingReview.length ? <section className="section"><div className="section-header"><div><h2>Para sua aprovação</h2><span className="muted">Solicitações das obras sob sua responsabilidade.</span></div></div><RequestTable requests={pendingReview} userId={user.id} role={user.role} busy={busy} onDecide={decide} /></section> : null}
+      <section className="section"><div className="section-header"><h2>Minhas solicitações e acompanhamentos</h2></div><RequestTable requests={data?.requests ?? []} userId={user.id} role={user.role} busy={busy} loading={loading} onDecide={decide} /></section>
     </>
   );
 }
 
-function RequestTable({ requests, userId, busy, loading, onDecide }: { requests: PaymentRequest[]; userId: string; busy: boolean; loading?: boolean; onDecide: (id: string, action: "approve" | "reject" | "cancel") => Promise<void> }) {
-  return <div className="panel"><div className="table-wrap"><table className="table"><thead><tr><th>Solicitação</th><th>Obra</th><th>Vencimento</th><th>Status</th><th>Responsável</th><th /></tr></thead><tbody>
-    {loading ? <tr><td className="daily-flow-empty" colSpan={6}>Carregando...</td></tr> : null}
-    {requests.map((paymentRequest) => { const canReview = paymentRequest.status === "PENDENTE" && paymentRequest.work.responsible?.id === userId; const canCancel = paymentRequest.status === "PENDENTE" && paymentRequest.requestedBy.id === userId; return <tr key={paymentRequest.id}><td><strong>{paymentRequest.supplierName}</strong><small className="muted">{paymentRequest.description}</small><Money value={paymentRequest.amount} /><div className="tag-list">{paymentRequest.attachments.map((attachment) => <a className="tag" href={attachment.url} key={attachment.id}><Paperclip size={13} /> {attachment.fileName}</a>)}</div>{paymentRequest.reviewReason ? <small className="muted">Motivo: {paymentRequest.reviewReason}</small> : null}</td><td>{paymentRequest.work.name}</td><td>{new Date(paymentRequest.dueDate).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</td><td><span className={`status status-${paymentRequest.status.toLowerCase()}`}>{statusLabels[paymentRequest.status]}</span></td><td>{paymentRequest.work.responsible?.name ?? "Não definido"}{paymentRequest.reviewedBy ? <small className="muted">Decisão: {paymentRequest.reviewedBy.name}</small> : null}</td><td><div className="toolbar">{canReview ? <><button className="button small primary" disabled={busy} onClick={() => void onDecide(paymentRequest.id, "approve")}><Check size={14} /> Aprovar</button><button className="button small danger" disabled={busy} onClick={() => void onDecide(paymentRequest.id, "reject")}><X size={14} /> Reprovar</button></> : null}{canCancel ? <button className="button small ghost" disabled={busy} onClick={() => void onDecide(paymentRequest.id, "cancel")}>Cancelar</button> : null}</div></td></tr>; })}
-    {!loading && !requests.length ? <tr><td className="daily-flow-empty" colSpan={6}>Nenhuma solicitação para exibir.</td></tr> : null}
-  </tbody></table></div></div>;
+function RequestTable({
+  requests,
+  userId,
+  role,
+  busy,
+  loading,
+  onDecide,
+}: {
+  requests: PaymentRequest[];
+  userId: string;
+  role: Role;
+  busy: boolean;
+  loading?: boolean;
+  onDecide: (id: string, action: "approve" | "reject" | "cancel") => Promise<void>;
+}) {
+  return (
+    <div className="panel">
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Solicitação</th>
+              <th>Obra</th>
+              <th>Vencimento</th>
+              <th>Status</th>
+              <th>Responsáveis</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td className="daily-flow-empty" colSpan={6}>Carregando...</td>
+              </tr>
+            ) : null}
+            {requests.map((paymentRequest) => {
+              const canReview =
+                paymentRequest.status === "PENDENTE" &&
+                (role === Role.ADMINISTRADOR ||
+                  paymentRequest.approvals.some(
+                    (approval) =>
+                      approval.approver.id === userId && approval.approvedAt === null,
+                  ));
+              const canCancel =
+                paymentRequest.status === "PENDENTE" &&
+                paymentRequest.requestedBy.id === userId;
+              const done = paymentRequest.approvals.filter(
+                ({ approvedAt }) => approvedAt !== null,
+              ).length;
+              return (
+                <tr key={paymentRequest.id}>
+                  <td>
+                    <strong>{paymentRequest.supplierName}</strong>
+                    <small className="muted">{paymentRequest.description}</small>
+                    <Money value={paymentRequest.amount} />
+                    <div className="tag-list">
+                      {paymentRequest.attachments.map((attachment) => (
+                        <a className="tag" href={attachment.url} key={attachment.id}>
+                          <Paperclip size={13} /> {attachment.fileName}
+                        </a>
+                      ))}
+                    </div>
+                    {paymentRequest.reviewReason ? (
+                      <small className="muted">Motivo: {paymentRequest.reviewReason}</small>
+                    ) : null}
+                  </td>
+                  <td>{paymentRequest.work.name}</td>
+                  <td>
+                    {new Date(paymentRequest.dueDate).toLocaleDateString("pt-BR", {
+                      timeZone: "UTC",
+                    })}
+                  </td>
+                  <td>
+                    <span className={`status status-${paymentRequest.status.toLowerCase()}`}>
+                      {statusLabels[paymentRequest.status]}
+                    </span>
+                    {paymentRequest.status === "PENDENTE" &&
+                    paymentRequest.approvals.length > 1 ? (
+                      <small className="muted">
+                        {done}/{paymentRequest.approvals.length} aprovações
+                      </small>
+                    ) : null}
+                  </td>
+                  <td>
+                    {paymentRequest.approvals
+                      .map((approval) =>
+                        approval.approvedAt
+                          ? `${approval.approver.name} ✓`
+                          : approval.approver.name,
+                      )
+                      .join(", ") || "Não definido"}
+                    {paymentRequest.reviewedBy ? (
+                      <small className="muted">
+                        Decisão: {paymentRequest.reviewedBy.name}
+                      </small>
+                    ) : null}
+                  </td>
+                  <td>
+                    <div className="toolbar">
+                      {canReview ? (
+                        <>
+                          <button
+                            className="button small primary"
+                            disabled={busy}
+                            onClick={() => void onDecide(paymentRequest.id, "approve")}
+                          >
+                            <Check size={14} /> Aprovar
+                          </button>
+                          <button
+                            className="button small danger"
+                            disabled={busy}
+                            onClick={() => void onDecide(paymentRequest.id, "reject")}
+                          >
+                            <X size={14} /> Reprovar
+                          </button>
+                        </>
+                      ) : null}
+                      {canCancel ? (
+                        <button
+                          className="button small ghost"
+                          disabled={busy}
+                          onClick={() => void onDecide(paymentRequest.id, "cancel")}
+                        >
+                          Cancelar
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && !requests.length ? (
+              <tr>
+                <td className="daily-flow-empty" colSpan={6}>
+                  Nenhuma solicitação para exibir.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }

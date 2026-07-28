@@ -2864,7 +2864,8 @@ button,
   min-width: 260px;
 }
 
-.approved-payments-filters .input {
+.approved-payments-filters .input,
+.approved-payments-filters .select {
   width: 100%;
 }
 
@@ -2964,4 +2965,14 @@ button,
   .sidebar.open {
     box-shadow: var(--shadow);
   }
+}
+
+/* Toast de importação em segundo plano. */
+.import-task-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  max-width: 360px;
+  box-shadow: var(--shadow);
 }

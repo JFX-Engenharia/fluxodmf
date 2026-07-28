@@ -22,23 +22,28 @@ type ApprovedPayment = {
 
 type ApprovedPaymentsResponse = {
   payments: ApprovedPayment[];
+  flows: Array<{ id: string; name: string; createdAt: string }>;
   summary: { count: number; amount: number; flows: number };
 };
 
 export function ApprovedPaymentsTab() {
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [flowDraft, setFlowDraft] = useState("");
+  const [appliedFlow, setAppliedFlow] = useState("");
   const url = useMemo(() => {
     const parameters = new URLSearchParams();
     if (appliedSearch) parameters.set("search", appliedSearch);
+    if (appliedFlow) parameters.set("flowId", appliedFlow);
     const query = parameters.toString();
     return `/api/payments/approved${query ? `?${query}` : ""}`;
-  }, [appliedSearch]);
+  }, [appliedFlow, appliedSearch]);
   const { data, error, loading, reload } = useFetchData<ApprovedPaymentsResponse>(url);
 
   function applySearch(event: FormEvent) {
     event.preventDefault();
     setAppliedSearch(search.trim());
+    setAppliedFlow(flowDraft);
   }
 
   const payments = data?.payments ?? [];
@@ -74,6 +79,22 @@ export function ApprovedPaymentsTab() {
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Fornecedor, descrição, conta ou fluxo"
           />
+        </div>
+        <div className="field">
+          <label htmlFor="approved-flow">Fluxo</label>
+          <select
+            className="select"
+            id="approved-flow"
+            value={flowDraft}
+            onChange={(event) => setFlowDraft(event.target.value)}
+          >
+            <option value="">Todos os fluxos</option>
+            {(data?.flows ?? []).map((flow) => (
+              <option key={flow.id} value={flow.id}>
+                {flow.name} — {shortDate(flow.createdAt)}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="approved-payments-filter-actions">
           <button className="button" type="submit"><Search size={16} /> Buscar</button>
@@ -118,8 +139,8 @@ export function ApprovedPaymentsTab() {
               ) : payments.length === 0 ? (
                 <tr>
                   <td colSpan={6}>
-                    {appliedSearch
-                      ? "Nenhum pagamento aprovado corresponde à busca."
+                    {appliedSearch || appliedFlow
+                      ? "Nenhum pagamento aprovado corresponde ao filtro."
                       : "Nenhum pagamento dos seus fluxos foi aprovado até agora."}
                   </td>
                 </tr>

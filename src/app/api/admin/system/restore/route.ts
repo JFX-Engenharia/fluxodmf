@@ -20,11 +20,31 @@ import { withIdempotency } from "@/lib/idempotency";
 const date = z.coerce.date();
 const decimal = z.union([z.string(), z.number()]);
 const nullableDate = date.nullable();
-const work = z.object({ id: z.string(), name: z.string(), slug: z.string(), costCenterAliases: z.string(), active: z.boolean(), responsibleUserId: z.string().nullable(), createdAt: date, updatedAt: date });
+const work = z.object({ id: z.string(), name: z.string(), slug: z.string(), costCenterAliases: z.string(), active: z.boolean(), createdAt: date, updatedAt: date });
+const workApprover = z.object({ workId: z.string(), userId: z.string() });
 const userWork = z.object({ userId: z.string(), workId: z.string() });
 const approvalRuleLink = z.object({ id: z.string(), workId: z.string().nullable() }).passthrough();
 const allocationRuleSplit = z.object({ id: z.string(), ruleId: z.string(), workId: z.string(), percentage: decimal });
-const importBatch = z.object({ id: z.string(), fileName: z.string(), totalRows: z.number(), validRows: z.number(), invalidRows: z.number(), status: z.nativeEnum(ImportStatus), importedById: z.string(), createdAt: date });
+const importBatch = z.object({
+  id: z.string(),
+  fileName: z.string(),
+  totalRows: z.number(),
+  validRows: z.number(),
+  invalidRows: z.number(),
+  status: z.nativeEnum(ImportStatus),
+  importedById: z.string(),
+  sourceFileName: z.string(),
+  flowName: z.string(),
+  processedRows: z.number(),
+  importedRows: z.number(),
+  importedContributions: z.number(),
+  createdAccounts: z.string(),
+  attempts: z.number(),
+  error: z.string(),
+  startedAt: nullableDate,
+  finishedAt: nullableDate,
+  createdAt: date,
+});
 const contribution = z.object({ id: z.string(), accountLabel: z.string(), amount: decimal, workId: z.string(), importBatchId: z.string(), createdAt: date });
 const payment = z.object({
   id: z.string(), externalReference: z.string().nullable(), supplierName: z.string(), description: z.string(), amount: decimal,
@@ -39,6 +59,7 @@ const paymentTag = z.object({ paymentId: z.string(), tagId: z.string() });
 const paymentAllocation = z.object({ id: z.string(), paymentId: z.string(), workId: z.string(), percentage: decimal, amount: decimal, source: z.nativeEnum(AllocationSource), createdAt: date, updatedAt: date });
 const advance = z.object({ id: z.string(), collaboratorName: z.string(), description: z.string(), amount: decimal, spentAmount: decimal, returnedAmount: decimal, grantedAt: date, dueDate: date, settledAt: nullableDate, status: z.nativeEnum(AdvanceStatus), notes: z.string().nullable(), documents: z.string(), workId: z.string().nullable(), createdById: z.string(), createdAt: date, updatedAt: date });
 const paymentRequest = z.object({ id: z.string(), supplierName: z.string(), description: z.string(), amount: decimal, dueDate: date, category: z.string(), workId: z.string(), requestedById: z.string(), status: z.nativeEnum(PaymentRequestStatus), reviewedById: z.string().nullable(), reviewedAt: nullableDate, reviewReason: z.string().nullable(), createdAt: date, updatedAt: date });
+const paymentRequestApproval = z.object({ id: z.string(), requestId: z.string(), approverId: z.string(), approvedAt: nullableDate, createdAt: date });
 const requestAttachment = z.object({ id: z.string(), requestId: z.string(), fileName: z.string(), mimeType: z.string(), size: z.number(), data: z.string(), createdAt: date });
 const dailyFlow = z.object({ id: z.string(), importBatchId: z.string(), status: z.nativeEnum(DailyFlowStatus), startedById: z.string().nullable(), startedAt: nullableDate, closedById: z.string().nullable(), closedAt: nullableDate, finalSummary: z.string(), createdAt: date, updatedAt: date });
 const dailyFlowEvent = z.object({ id: z.string(), dailyFlowId: z.string(), actorId: z.string(), type: z.nativeEnum(DailyFlowEventType), reason: z.string().nullable(), metadata: z.string(), createdAt: date });
@@ -46,11 +67,11 @@ const dailyFlowEvent = z.object({ id: z.string(), dailyFlowId: z.string(), actor
 const backupSchema = z.object({
   format: z.literal("fluxo-backup/v1"),
   data: z.object({
-    works: z.array(work), userWorks: z.array(userWork), approvalRules: z.array(approvalRuleLink), allocationRuleSplits: z.array(allocationRuleSplit),
+    works: z.array(work), workApprovers: z.array(workApprover), userWorks: z.array(userWork), approvalRules: z.array(approvalRuleLink), allocationRuleSplits: z.array(allocationRuleSplit),
     importBatches: z.array(importBatch), contributions: z.array(contribution), payments: z.array(payment), paymentActions: z.array(paymentAction),
     attachments: z.array(attachment), paymentApprovals: z.array(paymentApproval), paymentTags: z.array(paymentTag),
     paymentAllocations: z.array(paymentAllocation), advances: z.array(advance), paymentRequests: z.array(paymentRequest),
-    paymentRequestAttachments: z.array(requestAttachment), dailyFlows: z.array(dailyFlow), dailyFlowEvents: z.array(dailyFlowEvent),
+    paymentRequestApprovals: z.array(paymentRequestApproval), paymentRequestAttachments: z.array(requestAttachment), dailyFlows: z.array(dailyFlow), dailyFlowEvents: z.array(dailyFlowEvent),
   }).passthrough(),
 });
 
@@ -64,6 +85,7 @@ export async function POST(request: Request) {
       actorId: actor.id,
       execute: async () => {
         const counts = await prisma.$transaction(async (tx) => {
+          await tx.paymentRequestApproval.deleteMany();
           await tx.paymentRequestAttachment.deleteMany();
           await tx.paymentRequest.deleteMany();
           await tx.dailyFlowEvent.deleteMany();
@@ -79,9 +101,11 @@ export async function POST(request: Request) {
           await tx.advance.deleteMany();
           await tx.allocationRuleSplit.deleteMany();
           await tx.userWork.deleteMany();
+          await tx.workApprover.deleteMany();
           await tx.work.deleteMany();
 
           await tx.work.createMany({ data: backup.data.works });
+          await tx.workApprover.createMany({ data: backup.data.workApprovers });
           await Promise.all(
             backup.data.approvalRules.map((rule) =>
               tx.approvalRule.updateMany({ where: { id: rule.id }, data: { workId: rule.workId } }),
@@ -89,7 +113,9 @@ export async function POST(request: Request) {
           );
           await tx.allocationRuleSplit.createMany({ data: backup.data.allocationRuleSplits });
           await tx.userWork.createMany({ data: backup.data.userWorks });
-          await tx.importBatch.createMany({ data: backup.data.importBatches });
+          await tx.importBatch.createMany({
+            data: backup.data.importBatches.map((batch) => ({ ...batch, payload: "" })),
+          });
           await tx.contribution.createMany({ data: backup.data.contributions });
           await tx.payment.createMany({ data: backup.data.payments });
           await tx.paymentAction.createMany({ data: backup.data.paymentActions });
@@ -99,6 +125,7 @@ export async function POST(request: Request) {
           await tx.paymentAllocation.createMany({ data: backup.data.paymentAllocations });
           await tx.advance.createMany({ data: backup.data.advances });
           await tx.paymentRequest.createMany({ data: backup.data.paymentRequests });
+          await tx.paymentRequestApproval.createMany({ data: backup.data.paymentRequestApprovals });
           await tx.paymentRequestAttachment.createMany({ data: backup.data.paymentRequestAttachments.map((item) => ({ ...item, data: Buffer.from(item.data, "base64") })) });
           await tx.dailyFlow.createMany({ data: backup.data.dailyFlows });
           await tx.dailyFlowEvent.createMany({ data: backup.data.dailyFlowEvents });

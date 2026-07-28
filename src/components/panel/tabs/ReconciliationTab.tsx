@@ -212,6 +212,15 @@ export function ReconciliationTab() {
             </div>
           ) : null}
 
+          {result.totals.unmatchedInternal > 0 ? (
+            <div className="alert error" role="alert">
+              {result.totals.unmatchedInternal} lançamento(s) no sistema interno sem compra
+              correspondente no cartão CAJU, somando{" "}
+              {money(result.totals.unmatchedInternalAmount)}. Confira a tabela
+              &quot;Lançados sem compra no cartão&quot;.
+            </div>
+          ) : null}
+
           <section className="approval-stats">
             <div className="approval-stat approval-stat-danger">
               <span>Notas pendentes</span>
@@ -346,6 +355,7 @@ export function ReconciliationTab() {
                         <th>Data</th>
                         <th>Descrição</th>
                         <th>Centro de custo</th>
+                        <th>Situação</th>
                         <th className="amount">Valor</th>
                       </tr>
                     </thead>
@@ -356,6 +366,9 @@ export function ReconciliationTab() {
                           <td>{row.date ? shortDate(row.date) : "-"}</td>
                           <td>{row.description || "-"}</td>
                           <td>{row.costCenter || "-"}</td>
+                          <td>
+                            <span className="status REPROVADO">Sem registro no cartão</span>
+                          </td>
                           <td className="amount">
                             <Money value={row.amount} />
                           </td>
