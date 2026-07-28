@@ -2864,7 +2864,8 @@ button,
   min-width: 260px;
 }
 
-.approved-payments-filters .input {
+.approved-payments-filters .input,
+.approved-payments-filters .select {
   width: 100%;
 }
 
