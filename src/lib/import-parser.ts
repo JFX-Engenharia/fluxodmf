@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import {
+  canonicalAccountLabel,
   matchWork,
   normalizeName as normalize,
   type WorkMatcher,
@@ -232,12 +233,10 @@ function buildSummaryChecks(
   works: WorkMatcher[],
 ): ImportSummaryCheck[] {
   /**
-   * Conta ja cadastrada agrupa pelo id; conta nova ainda nao tem id, entao
-   * agrupa pelo nome normalizado. Sem isso, as contas novas ficariam de fora
-   * do confronto e o total da planilha pareceria divergir de tudo.
+   * O resumo usa o mesmo rótulo canônico do conversor. Assim, contas distintas
+   * por cidade podem ser conferidas como uma única linha na memória de cálculo.
    */
-  const keyForWork = (workId: string | undefined, costCenter: string) =>
-    workId ?? `nome:${normalize(costCenter)}`;
+  const keyForLabel = (label: string) => normalize(canonicalAccountLabel(label));
 
   const computed = new Map<string, number>();
   const labels = new Map<string, string>();
@@ -245,9 +244,10 @@ function buildSummaryChecks(
   for (const row of rows) {
     if (row.errors.length > 0) continue;
     if (!row.costCenter) continue;
-    const key = keyForWork(row.workId, row.costCenter);
+    const label = row.workName ?? row.costCenter;
+    const key = keyForLabel(label);
     computed.set(key, (computed.get(key) ?? 0) + row.amount);
-    labels.set(key, row.workName ?? row.costCenter);
+    labels.set(key, canonicalAccountLabel(label));
   }
 
   const checks: ImportSummaryCheck[] = [];
@@ -255,7 +255,7 @@ function buildSummaryChecks(
 
   for (const entry of sheetSummary) {
     const work = matchWork(entry.accountLabel, works);
-    const key = keyForWork(work?.id, entry.accountLabel);
+    const key = keyForLabel(work?.name ?? entry.accountLabel);
     const computedAmount = computed.get(key) ?? 0;
     seen.add(key);
 
