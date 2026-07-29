@@ -11,6 +11,7 @@ export const userStatusLabels: Record<UserStatus, string> = {
 
 export const statusLabels: Record<PaymentStatus, string> = {
   PENDENTE: "Pendente",
+  EM_ANALISE: "Em análise",
   APROVADO: "Aprovado",
   REPROVADO: "Reprovado",
   TRANSFERIDO: "Transferido",

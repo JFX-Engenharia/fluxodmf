@@ -28,6 +28,7 @@ enum UserStatus {
 
 enum PaymentStatus {
   PENDENTE
+  EM_ANALISE
   APROVADO
   REPROVADO
   TRANSFERIDO
@@ -52,6 +53,7 @@ enum ActionType {
   RESPONDER_INFO
   CANCELAR
   REABRIR
+  ANALISAR
 }
 
 enum DailyFlowStatus {
@@ -241,6 +243,7 @@ model ImportBatch {
   startedAt             DateTime?
   finishedAt            DateTime?
   createdAt     DateTime       @default(now())
+  @@index([importedById, createdAt])
 }
 
 /// Aportes por conta (bloco APORTES da planilha). Valor que entra na conta

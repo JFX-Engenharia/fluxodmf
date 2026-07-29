@@ -31,19 +31,23 @@ export function ApprovedPaymentsTab() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [flowDraft, setFlowDraft] = useState("");
   const [appliedFlow, setAppliedFlow] = useState("");
+  const [dateDraft, setDateDraft] = useState("");
+  const [appliedDate, setAppliedDate] = useState("");
   const url = useMemo(() => {
     const parameters = new URLSearchParams();
     if (appliedSearch) parameters.set("search", appliedSearch);
     if (appliedFlow) parameters.set("flowId", appliedFlow);
+    if (appliedDate) parameters.set("approvedOn", appliedDate);
     const query = parameters.toString();
     return `/api/payments/approved${query ? `?${query}` : ""}`;
-  }, [appliedFlow, appliedSearch]);
+  }, [appliedDate, appliedFlow, appliedSearch]);
   const { data, error, loading, reload } = useFetchData<ApprovedPaymentsResponse>(url);
 
   function applySearch(event: FormEvent) {
     event.preventDefault();
     setAppliedSearch(search.trim());
     setAppliedFlow(flowDraft);
+    setAppliedDate(dateDraft);
   }
 
   const payments = data?.payments ?? [];
@@ -96,6 +100,16 @@ export function ApprovedPaymentsTab() {
             ))}
           </select>
         </div>
+        <div className="field">
+          <label htmlFor="approved-date">Aprovados no dia</label>
+          <input
+            className="input"
+            id="approved-date"
+            type="date"
+            value={dateDraft}
+            onChange={(event) => setDateDraft(event.target.value)}
+          />
+        </div>
         <div className="approved-payments-filter-actions">
           <button className="button" type="submit"><Search size={16} /> Buscar</button>
           <button className="button secondary" type="button" onClick={reload}>
@@ -139,7 +153,7 @@ export function ApprovedPaymentsTab() {
               ) : payments.length === 0 ? (
                 <tr>
                   <td colSpan={6}>
-                    {appliedSearch || appliedFlow
+                    {appliedSearch || appliedFlow || appliedDate
                       ? "Nenhum pagamento aprovado corresponde ao filtro."
                       : "Nenhum pagamento dos seus fluxos foi aprovado até agora."}
                   </td>

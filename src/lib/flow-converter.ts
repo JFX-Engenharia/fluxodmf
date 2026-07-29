@@ -42,8 +42,6 @@ const OUTPUT_HEADERS = [
 
 const MONEY_FORMAT = '_-"R$" * #,##0.00_-;-"R$" * #,##0.00_-;_-"R$" * "-"??_-;_-@_-';
 
-/** Coluna STATUS do resumo: o fluxo sai do Conta Azul. */
-const SUMMARY_STATUS = "CONTA AZUL";
 
 export type ConvertedRow = {
   rowNumber: number;
@@ -303,13 +301,11 @@ export async function buildFlowWorkbook(conversion: FlowConversion, aportes: Apo
   sheet.getRow(summaryHeaderRow).getCell(3).value = "CONTA";
   sheet.getRow(summaryHeaderRow).getCell(4).value = "VALOR";
   sheet.getRow(summaryHeaderRow).getCell(4).numFmt = MONEY_FORMAT;
-  sheet.getRow(summaryHeaderRow).getCell(5).value = "STATUS";
 
   conversion.accounts.forEach((account, index) => {
     const sheetRow = sheet.getRow(summaryHeaderRow + 1 + index);
     sheetRow.getCell(3).value = account.accountLabel;
     moneyCell(sheetRow, 4, account.computedAmount);
-    sheetRow.getCell(5).value = SUMMARY_STATUS;
   });
 
   const summarySubtotalRow = summaryHeaderRow + conversion.accounts.length + 1;

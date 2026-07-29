@@ -22,6 +22,7 @@ const actionSchema = z.object({
     "answer_info",
     "cancel",
     "reopen",
+    "analyze",
   ]),
   reason: z.string().trim().optional(),
   standardReasonId: z.string().trim().optional(),
@@ -131,6 +132,12 @@ export async function POST(
       requireReason(effectiveReason, "Informe o motivo do cancelamento.");
       newStatus = PaymentStatus.CANCELADO;
       actionType = ActionType.CANCELAR;
+    } else if (body.action === "analyze") {
+      newStatus =
+        payment.status === PaymentStatus.EM_ANALISE
+          ? PaymentStatus.PENDENTE
+          : PaymentStatus.EM_ANALISE;
+      actionType = ActionType.ANALISAR;
     } else if (body.action === "reopen") {
       requireReason(effectiveReason, "Informe o motivo para voltar a em aberto.");
       newStatus = PaymentStatus.PENDENTE;

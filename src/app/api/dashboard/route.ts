@@ -19,6 +19,7 @@ function round(value: number) {
  */
 const COMMITTED_STATUSES: PaymentStatus[] = [
   PaymentStatus.PENDENTE,
+  PaymentStatus.EM_ANALISE,
   PaymentStatus.APROVADO,
   PaymentStatus.INFO_SOLICITADA,
   PaymentStatus.CORRIGIDO,
@@ -31,6 +32,7 @@ const COMMITTED_STATUSES: PaymentStatus[] = [
  */
 const UNDECIDED_STATUSES: PaymentStatus[] = [
   PaymentStatus.PENDENTE,
+  PaymentStatus.EM_ANALISE,
   PaymentStatus.INFO_SOLICITADA,
   PaymentStatus.CORRIGIDO,
 ];

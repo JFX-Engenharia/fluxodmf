@@ -16,6 +16,7 @@ export type DailyFlowSummary = {
   transferred: StatusSummary;
   cancelled: StatusSummary;
   pending: StatusSummary;
+  inAnalysis: StatusSummary;
   informationRequested: StatusSummary;
   corrected: StatusSummary;
   undecidedCount: number;
@@ -46,6 +47,7 @@ export function summarizePayments(payments: PaymentForSummary[]): DailyFlowSumma
   const transferred = status(PaymentStatus.TRANSFERIDO);
   const cancelled = status(PaymentStatus.CANCELADO);
   const pending = status(PaymentStatus.PENDENTE);
+  const inAnalysis = status(PaymentStatus.EM_ANALISE);
   const informationRequested = status(PaymentStatus.INFO_SOLICITADA);
   const corrected = status(PaymentStatus.CORRIGIDO);
 
@@ -59,9 +61,11 @@ export function summarizePayments(payments: PaymentForSummary[]): DailyFlowSumma
     transferred,
     cancelled,
     pending,
+    inAnalysis,
     informationRequested,
     corrected,
-    undecidedCount: pending.count + informationRequested.count + corrected.count,
+    undecidedCount:
+      pending.count + informationRequested.count + corrected.count + inAnalysis.count,
   };
 }
 

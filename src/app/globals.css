@@ -1014,7 +1014,8 @@ textarea:disabled {
 }
 
 .status.TRANSFERIDO,
-.status.INFO_SOLICITADA {
+.status.INFO_SOLICITADA,
+.status.EM_ANALISE {
   color: var(--info);
   background: var(--info-soft);
 }

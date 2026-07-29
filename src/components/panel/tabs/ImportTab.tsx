@@ -57,6 +57,7 @@ export function ImportTab() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [loading, setLoading] = useState(false);
+  const [flowName, setFlowName] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -225,6 +226,11 @@ export function ImportTab() {
       }
 
       setConversion(data as FlowConversion);
+      setFlowName((current) =>
+        current.trim()
+          ? current
+          : (data as FlowConversion).suggestedFileName.replace(/\.xlsx$/i, ""),
+      );
     } catch {
       setError("Falha de conexão ao enviar a planilha bruta.");
     } finally {
@@ -263,16 +269,19 @@ export function ImportTab() {
         return;
       }
 
+      const downloadName = flowName.trim()
+        ? `${flowName.trim()}.xlsx`
+        : conversion.suggestedFileName;
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = conversion.suggestedFileName;
+      anchor.download = downloadName;
       anchor.click();
       URL.revokeObjectURL(url);
 
       setStep("import");
-      setMessage(`${conversion.suggestedFileName} gerado. Importe a planilha refinada a seguir.`);
+      setMessage(`${downloadName} gerado. Importe a planilha refinada a seguir.`);
     } catch {
       setError("Falha de conexão ao gerar a planilha de fluxo.");
     } finally {
@@ -324,6 +333,10 @@ export function ImportTab() {
         },
         body: JSON.stringify({
           fileName: preview.fileName,
+          importName: (flowName.trim() || preview.fileName.replace(/\.(csv|xlsx)$/i, "")).slice(
+            0,
+            120,
+          ),
           totalRows: preview.totalRows,
           rows: preview.rows,
           contributions: preview.contributions,
@@ -343,6 +356,7 @@ export function ImportTab() {
 
       setPreview(null);
       setFile(null);
+      setFlowName("");
       if (fileInputRef.current) fileInputRef.current.value = "";
       setImportTask(null);
       setCreatedFlow(null);
@@ -426,6 +440,17 @@ export function ImportTab() {
                 <Upload size={20} aria-hidden="true" />
                 <strong>{rawFile ? rawFile.name : "Arraste a planilha bruta e solte aqui"}</strong>
                 <small>ou selecione o arquivo abaixo · CSV, XLS ou XLSX</small>
+              </div>
+              <div className="field">
+                <label htmlFor="flow-name">Nome do fluxo</label>
+                <input
+                  className="input"
+                  id="flow-name"
+                  value={flowName}
+                  maxLength={120}
+                  onChange={(event) => setFlowName(event.target.value)}
+                  placeholder="Ex.: FLUXO DE PAGAMENTOS JFX DIA 29.07.2026"
+                />
               </div>
               <div className="button-row import-actions import-conversion-actions">
                 <button

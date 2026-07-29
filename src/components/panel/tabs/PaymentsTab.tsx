@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   FileDown,
   FileSpreadsheet,
+  Hourglass,
   ListChecks,
   LockKeyhole,
   Play,
@@ -67,6 +68,7 @@ type FlowSummary = {
   rejected: { count: number; amount: number };
   transferred: { count: number; amount: number };
   cancelled: { count: number; amount: number };
+  inAnalysis: { count: number; amount: number };
   pending: { count: number; amount: number };
   informationRequested: { count: number; amount: number };
   corrected: { count: number; amount: number };
@@ -115,6 +117,7 @@ const flowStatusClasses: Record<DailyFlowStatus, string> = {
 const statusOptions: { value: "" | StatusKey; label: string }[] = [
   { value: "", label: "Todos os status" },
   { value: "PENDENTE", label: "Pendente" },
+  { value: "EM_ANALISE", label: "Em análise" },
   { value: "CORRIGIDO", label: "Corrigido" },
   { value: "INFO_SOLICITADA", label: "Info solicitada" },
   { value: "TRANSFERIDO", label: "Transferido" },
@@ -788,6 +791,20 @@ export function PaymentsTab() {
                     onClick={openMetadata}
                   >
                     <Tags size={16} /> Classificar e ratear
+                  </button>
+                  <button
+                    className="button warning"
+                    type="button"
+                    disabled={
+                      busy ||
+                      flowLocked ||
+                      selected.status === "APROVADO" ||
+                      selected.status === "CANCELADO"
+                    }
+                    onClick={() => void runAction("analyze")}
+                  >
+                    <Hourglass size={16} />
+                    {selected.status === "EM_ANALISE" ? "Retirar de análise" : "Em análise"}
                   </button>
                   <button
                     className="button success"

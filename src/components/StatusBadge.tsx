@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Clock3,
   HelpCircle,
+  Hourglass,
   RotateCcw,
   XCircle,
 } from "lucide-react";
@@ -14,6 +15,7 @@ type Props = {
 
 const statusIcons: Record<Props["status"], React.ComponentType<{ size?: number }>> = {
   PENDENTE: Clock3,
+  EM_ANALISE: Hourglass,
   APROVADO: CheckCircle2,
   REPROVADO: XCircle,
   TRANSFERIDO: CalendarClock,

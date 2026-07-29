@@ -9,6 +9,11 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const search = url.searchParams.get("search")?.trim();
     const flowId = url.searchParams.get("flowId")?.trim() || undefined;
+    const approvedOnRaw = url.searchParams.get("approvedOn")?.trim();
+    const approvedOn =
+      approvedOnRaw && /^\d{4}-\d{2}-\d{2}$/.test(approvedOnRaw) ? approvedOnRaw : undefined;
+    const dayStart = approvedOn ? new Date(`${approvedOn}T00:00:00-03:00`) : undefined;
+    const dayEnd = dayStart ? new Date(dayStart.getTime() + 86_400_000) : undefined;
     const [payments, flows] = await Promise.all([
       prisma.payment.findMany({
         where: {
@@ -26,6 +31,17 @@ export async function GET(request: Request) {
                   { costCenter: { contains: search, mode: "insensitive" as const } },
                   { importBatch: { fileName: { contains: search, mode: "insensitive" as const } } },
                 ],
+              }
+            : {}),
+          ...(dayStart
+            ? {
+                actions: {
+                  some: {
+                    type: ActionType.APROVAR,
+                    newStatus: PaymentStatus.APROVADO,
+                    createdAt: { gte: dayStart, lt: dayEnd },
+                  },
+                },
               }
             : {}),
         },
