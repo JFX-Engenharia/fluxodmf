@@ -425,10 +425,10 @@ export function reconcile(input: {
 
   for (const row of input.internal) {
     if (row.amount <= 0) continue;
-    if (!inRange(row.date)) {
-      internalOutOfRange += 1;
-      continue;
-    }
+    if (!inRange(row.date)) internalOutOfRange += 1;
+    // A data inicial limita as compras auditadas, nao as evidencias de
+    // lancamento. Uma nota registrada antes do corte ainda comprova a compra,
+    // desde que esteja dentro da janela de pareamento.
     entries.push(row);
   }
 
@@ -448,7 +448,9 @@ export function reconcile(input: {
   const takenInternal = new Set(matched.map((pair) => pair.internal.rowNumber));
 
   const pending = purchases.filter((row) => !takenCaju.has(row.rowNumber));
-  const unmatchedInternal = entries.filter((row) => !takenInternal.has(row.rowNumber));
+  const unmatchedInternal = entries.filter(
+    (row) => inRange(row.date) && !takenInternal.has(row.rowNumber),
+  );
 
   const sum = (rows: { amount: number }[]) =>
     Number(rows.reduce((total, row) => total + row.amount, 0).toFixed(2));
