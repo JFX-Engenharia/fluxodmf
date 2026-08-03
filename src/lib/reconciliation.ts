@@ -230,7 +230,7 @@ export function parseCajuRows(
       collaborator: String(raw[columns.collaborator] ?? "").trim(),
       type: String(raw[columns.type] ?? "").trim(),
       merchant: String(raw[columns.merchant] ?? "").trim(),
-      amount: Number.isNaN(amount) ? 0 : Number(amount.toFixed(2)),
+      amount: Number.isNaN(amount) ? 0 : Number(Math.abs(amount).toFixed(2)),
       date: date ? isoDate(date) : "",
       transactionStatus: String(raw[columns.transactionStatus] ?? "").trim(),
       reviewStatus: String(raw[columns.reviewStatus] ?? "").trim(),
