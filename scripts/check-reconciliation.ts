@@ -114,4 +114,24 @@ assert.equal(result.pending[0]?.merchant, "Fornecedor pendente");
 assert.equal(result.outOfRange.internal, 2);
 assert.equal(result.totals.unmatchedInternal, 0, "lançamentos antigos não devem poluir as sobras");
 
+const repeatedAmountResult = reconcile({
+  cajuFileName: "caju.csv",
+  internalFileName: "interno.csv",
+  caju: [
+    { ...caju.rows[0], rowNumber: 10, amount: 60, date: "2026-04-25" },
+    { ...caju.rows[0], rowNumber: 11, amount: 60, date: "2026-05-27" },
+  ],
+  internal: [{ ...internal.rows[0], rowNumber: 10, amount: 60, date: "2026-05-27" }],
+  fromDate: null,
+});
+
+assert.equal(repeatedAmountResult.totals.matched, 1);
+assert.equal(
+  repeatedAmountResult.matched[0]?.caju.rowNumber,
+  11,
+  "entre compras do mesmo valor, o lançamento deve conciliar a compra mais próxima",
+);
+assert.equal(repeatedAmountResult.matched[0]?.dayGap, 0);
+assert.equal(repeatedAmountResult.pending[0]?.rowNumber, 10);
+
 console.log("Conciliação de notas validada.");

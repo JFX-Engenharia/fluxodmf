@@ -305,59 +305,88 @@ function unique(values: string[]) {
 }
 
 /**
- * Casamento MAXIMO entre compras e lancamentos de um mesmo valor.
+ * Casamento maximo com o menor intervalo total entre compras e lancamentos.
  *
- * O caminho obvio — montar todos os pares, ordenar pelo gap e ir consumindo —
- * parece razoavel e esta errado: um par de gap baixo pode consumir o unico
- * lancamento que estava dentro da janela de OUTRA compra, e essa compra vira
- * pendente sem ser. Esse e o pior erro possivel aqui, porque manda cobrar do
- * colaborador uma nota que ele ja entregou (e ainda acusa o lancamento dele de
- * sobrando). Casos reais aparecem quando uma nota atrasada e lancada bem perto
- * de uma compra recorrente de mesmo valor: combustivel, pedagio, refeicao.
- *
- * Como so compras de valor identico competem entre si, cada grupo e minusculo
- * e da para fazer o casamento maximo de verdade, por caminhos aumentantes.
+ * Maximizar apenas a quantidade nao basta: quando varias compras tem o mesmo
+ * valor, o algoritmo anterior deixava a primeira compra com o lancamento mesmo
+ * que outra tivesse a mesma data. A compra realmente lancada aparecia entao
+ * como pendente. Como datas ordenadas e distancia absoluta formam um problema
+ * monotono, a programacao dinamica abaixo maximiza pares e, entre solucoes com
+ * a mesma quantidade, minimiza a soma dos intervalos.
  */
 function matchSameAmount(
   purchases: CajuTransaction[],
   entries: InternalEntry[],
 ): MatchedPair[] {
-  const adjacency = purchases.map((purchase) =>
-    entries
-      .map((entry, index) => ({ index, gap: dayGap(purchase.date, entry.date) }))
-      .filter((candidate) => candidate.gap <= MATCH_WINDOW_DAYS)
-      // Gap crescente: entre os casamentos maximos possiveis, tende a escolher
-      // o par mais proximo no tempo. A cardinalidade e que e garantida.
-      .sort((a, b) => a.gap - b.gap || a.index - b.index)
-      .map((candidate) => candidate.index),
+  const sortedPurchases = [...purchases].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.rowNumber - b.rowNumber,
   );
+  const sortedEntries = [...entries].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.rowNumber - b.rowNumber,
+  );
+  const columnCount = sortedEntries.length + 1;
+  const cellCount = (sortedPurchases.length + 1) * columnCount;
+  const matches = new Int32Array(cellCount);
+  const costs = new Int32Array(cellCount);
+  const directions = new Uint8Array(cellCount);
 
-  const entryOwner = new Array<number>(entries.length).fill(-1);
+  for (let purchaseIndex = 1; purchaseIndex <= sortedPurchases.length; purchaseIndex++) {
+    for (let entryIndex = 1; entryIndex <= sortedEntries.length; entryIndex++) {
+      const cell = purchaseIndex * columnCount + entryIndex;
+      const skipPurchase = (purchaseIndex - 1) * columnCount + entryIndex;
+      const skipEntry = purchaseIndex * columnCount + entryIndex - 1;
+      const previous = (purchaseIndex - 1) * columnCount + entryIndex - 1;
 
-  const augment = (purchaseIndex: number, visited: boolean[]): boolean => {
-    for (const entryIndex of adjacency[purchaseIndex]) {
-      if (visited[entryIndex]) continue;
-      visited[entryIndex] = true;
-      // Se o lancamento esta livre, ou se quem o tinha acha outro, fica com ele.
-      if (entryOwner[entryIndex] === -1 || augment(entryOwner[entryIndex], visited)) {
-        entryOwner[entryIndex] = purchaseIndex;
-        return true;
+      matches[cell] = matches[skipPurchase];
+      costs[cell] = costs[skipPurchase];
+      directions[cell] = 1;
+
+      if (
+        matches[skipEntry] > matches[cell] ||
+        (matches[skipEntry] === matches[cell] && costs[skipEntry] < costs[cell])
+      ) {
+        matches[cell] = matches[skipEntry];
+        costs[cell] = costs[skipEntry];
+        directions[cell] = 2;
+      }
+
+      const gap = dayGap(
+        sortedPurchases[purchaseIndex - 1].date,
+        sortedEntries[entryIndex - 1].date,
+      );
+      if (gap > MATCH_WINDOW_DAYS) continue;
+
+      const matchedCount = matches[previous] + 1;
+      const matchedCost = costs[previous] + gap;
+      if (
+        matchedCount > matches[cell] ||
+        (matchedCount === matches[cell] && matchedCost < costs[cell])
+      ) {
+        matches[cell] = matchedCount;
+        costs[cell] = matchedCost;
+        directions[cell] = 3;
       }
     }
-    return false;
-  };
-
-  for (let index = 0; index < purchases.length; index++) {
-    augment(index, new Array<boolean>(entries.length).fill(false));
   }
 
   const pairs: MatchedPair[] = [];
-  entryOwner.forEach((purchaseIndex, entryIndex) => {
-    if (purchaseIndex === -1) return;
-    const caju = purchases[purchaseIndex];
-    const internal = entries[entryIndex];
-    pairs.push({ caju, internal, dayGap: dayGap(caju.date, internal.date) });
-  });
+  let purchaseIndex = sortedPurchases.length;
+  let entryIndex = sortedEntries.length;
+
+  while (purchaseIndex > 0 && entryIndex > 0) {
+    const direction = directions[purchaseIndex * columnCount + entryIndex];
+    if (direction === 3) {
+      const caju = sortedPurchases[purchaseIndex - 1];
+      const internal = sortedEntries[entryIndex - 1];
+      pairs.push({ caju, internal, dayGap: dayGap(caju.date, internal.date) });
+      purchaseIndex -= 1;
+      entryIndex -= 1;
+    } else if (direction === 1) {
+      purchaseIndex -= 1;
+    } else {
+      entryIndex -= 1;
+    }
+  }
 
   return pairs;
 }
