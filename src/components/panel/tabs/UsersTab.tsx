@@ -25,6 +25,7 @@ export type PanelUserRow = {
 type UsersResponse = {
   users: PanelUserRow[];
   works: { id: string; name: string }[];
+  permissions: { canPermanentlyDeleteUsers: boolean };
   error?: string;
 };
 
@@ -82,6 +83,7 @@ export function UsersTab() {
 
   const users = data?.users ?? [];
   const works = data?.works ?? [];
+  const canPermanentlyDeleteUsers = data?.permissions.canPermanentlyDeleteUsers ?? false;
 
   function startEditing(target: PanelUserRow) {
     setEditing(target);
@@ -436,19 +438,21 @@ export function UsersTab() {
                             Ativar
                           </button>
                         )}
-                        <button
-                          className="button danger"
-                          type="button"
-                          disabled={busyId === item.id || item.id === currentUser.id}
-                          onClick={() => setConfirmDelete(item)}
-                          title={
-                            item.id === currentUser.id
-                              ? "Você não pode excluir a própria conta"
-                              : "Excluir usuário"
-                          }
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        {canPermanentlyDeleteUsers ? (
+                          <button
+                            className="button danger"
+                            type="button"
+                            disabled={busyId === item.id || item.id === currentUser.id}
+                            onClick={() => setConfirmDelete(item)}
+                            title={
+                              item.id === currentUser.id
+                                ? "Você não pode excluir a própria conta"
+                                : "Excluir usuário"
+                            }
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

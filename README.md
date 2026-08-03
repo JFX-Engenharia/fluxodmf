@@ -118,6 +118,8 @@ o perfil. O coordenador também pode criar contas direto, já ativas.
 
 O sistema impede que o último coordenador ativo se rebaixe, se desative ou seja
 excluído — sem isso, dá para ficar sem ninguém capaz de gerenciar o acesso.
+A exclusão definitiva só pode ser solicitada pelo usuário `arthur`; os demais
+administradores podem desativar contas.
 Usuário com histórico (importações, pagamentos, ações) é desativado em vez de
 excluído, para não quebrar a auditoria.
 

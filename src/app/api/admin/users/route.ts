@@ -4,6 +4,7 @@ import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { hashPassword, requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { canPermanentlyDeleteUsers } from "@/lib/permissions";
 
 const createSchema = z.object({
   name: z.string().min(2, "Informe o nome."),
@@ -70,7 +71,7 @@ const include = {
 
 export async function GET() {
   try {
-    await requireTab("usuarios");
+    const actor = await requireTab("usuarios");
 
     const [users, works] = await Promise.all([
       prisma.user.findMany({
@@ -83,6 +84,9 @@ export async function GET() {
     return ok({
       users: users.map((user) => serializeUser(user as UserWithWorks)),
       works: works.map((work) => ({ id: work.id, name: work.name })),
+      permissions: {
+        canPermanentlyDeleteUsers: canPermanentlyDeleteUsers(actor.username),
+      },
     });
   } catch (error) {
     return handleApiError(error);
@@ -254,6 +258,9 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const actor = await requireTab("usuarios");
+    if (!canPermanentlyDeleteUsers(actor.username)) {
+      throw new ApiError(403, "Apenas o usuário arthur pode excluir contas permanentemente.");
+    }
     const body = deleteSchema.parse(await request.json());
 
     if (body.id === actor.id) {

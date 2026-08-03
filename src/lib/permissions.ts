@@ -2,6 +2,12 @@ import { Role } from "@prisma-generated/enums";
 
 export { Role };
 
+const PERMANENT_ACCOUNT_DELETION_USERNAME = "arthur";
+
+export function canPermanentlyDeleteUsers(username: string) {
+  return username.trim().toLowerCase() === PERMANENT_ACCOUNT_DELETION_USERNAME;
+}
+
 /**
  * Fonte unica das regras de acesso (RBAC). O menu do painel e as rotas de API
  * consultam este modulo, para que esconder uma aba e bloquear o endpoint
