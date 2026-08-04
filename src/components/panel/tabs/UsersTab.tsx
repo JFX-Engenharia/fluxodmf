@@ -626,8 +626,8 @@ export function UsersTab() {
           <div className="modal">
             <h2 id="delete-user-title">Excluir usuário</h2>
             <p>
-              Excluir <strong>{confirmDelete.name}</strong> ({confirmDelete.username})? Se a
-              conta tiver histórico no sistema, ela será desativada em vez de removida.
+              Excluir <strong>{confirmDelete.name}</strong> ({confirmDelete.username})
+              permanentemente? O histórico financeiro dele será mantido como &quot;Usuário removido&quot;.
             </p>
             <div className="button-row">
               <button

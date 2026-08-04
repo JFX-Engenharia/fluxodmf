@@ -1,10 +1,11 @@
 import { z } from "zod";
+import type { Prisma } from "@prisma-generated/client";
 import { Role, UserStatus } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { hashPassword, requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { canPermanentlyDeleteUsers } from "@/lib/permissions";
+import { canPermanentlyDeleteUsers, REMOVED_USER_SENTINEL } from "@/lib/permissions";
 
 const createSchema = z.object({
   name: z.string().min(2, "Informe o nome."),
@@ -69,12 +70,28 @@ const include = {
   reviewedBy: { select: { name: true } },
 } as const;
 
+async function ensureRemovedUserSentinel(tx: Prisma.TransactionClient) {
+  return tx.user.upsert({
+    where: { username: REMOVED_USER_SENTINEL },
+    update: {},
+    create: {
+      name: "Usuário removido",
+      username: REMOVED_USER_SENTINEL,
+      email: "removido@djfluxo.local",
+      role: Role.OPERADOR,
+      status: UserStatus.INATIVO,
+      passwordHash: await hashPassword(crypto.randomUUID()),
+    },
+  });
+}
+
 export async function GET() {
   try {
     const actor = await requireTab("usuarios");
 
     const [users, works] = await Promise.all([
       prisma.user.findMany({
+        where: { username: { not: REMOVED_USER_SENTINEL } },
         orderBy: [{ status: "asc" }, { createdAt: "desc" }],
         include,
       }),
@@ -270,6 +287,13 @@ export async function DELETE(request: Request) {
     const target = await prisma.user.findUnique({ where: { id: body.id } });
     if (!target) throw new ApiError(404, "Usuário não encontrado.");
 
+    if (target.username === REMOVED_USER_SENTINEL) {
+      throw new ApiError(
+        400,
+        "Esta conta preserva o histórico de usuários removidos e não pode ser excluída.",
+      );
+    }
+
     if (target.role === Role.ADMINISTRADOR && target.status === UserStatus.ATIVO) {
       const remaining = await prisma.user.count({
         where: {
@@ -283,8 +307,7 @@ export async function DELETE(request: Request) {
       }
     }
 
-    // Quem ja importou ou agiu sobre pagamentos nao pode sumir sem quebrar o
-    // historico; nesse caso a conta e desativada em vez de removida.
+    // O histórico financeiro é preservado e reatribuído antes da remoção da conta.
     const [
       payments,
       actions,
@@ -294,6 +317,8 @@ export async function DELETE(request: Request) {
       reviewedRequests,
       workApprovals,
       requestApprovals,
+      paymentApprovals,
+      advances,
     ] = await Promise.all([
       prisma.payment.count({ where: { createdById: target.id } }),
       prisma.paymentAction.count({ where: { actorId: target.id } }),
@@ -303,6 +328,8 @@ export async function DELETE(request: Request) {
       prisma.paymentRequest.count({ where: { reviewedById: target.id } }),
       prisma.workApprover.count({ where: { userId: target.id } }),
       prisma.paymentRequestApproval.count({ where: { approverId: target.id } }),
+      prisma.paymentApproval.count({ where: { actorId: target.id } }),
+      prisma.advance.count({ where: { createdById: target.id } }),
     ]);
 
     if (
@@ -313,30 +340,58 @@ export async function DELETE(request: Request) {
         requestedPayments +
         reviewedRequests +
         workApprovals +
-        requestApprovals >
+        requestApprovals +
+        paymentApprovals +
+        advances >
       0
     ) {
-      const user = await prisma.user.update({
-        where: { id: target.id },
-        data: { status: UserStatus.INATIVO, reviewedById: actor.id, reviewedAt: new Date() },
-        include,
+      await prisma.$transaction(async (tx) => {
+        const sentinel = await ensureRemovedUserSentinel(tx);
+
+        await tx.paymentApproval.deleteMany({ where: { actorId: target.id } });
+        await tx.paymentRequestApproval.deleteMany({ where: { approverId: target.id } });
+        await tx.payment.updateMany({
+          where: { createdById: target.id },
+          data: { createdById: sentinel.id },
+        });
+        await tx.importBatch.updateMany({
+          where: { importedById: target.id },
+          data: { importedById: sentinel.id },
+        });
+        await tx.paymentAction.updateMany({
+          where: { actorId: target.id },
+          data: { actorId: sentinel.id },
+        });
+        await tx.dailyFlowEvent.updateMany({
+          where: { actorId: target.id },
+          data: { actorId: sentinel.id },
+        });
+        await tx.paymentRequest.updateMany({
+          where: { requestedById: target.id },
+          data: { requestedById: sentinel.id },
+        });
+        await tx.advance.updateMany({
+          where: { createdById: target.id },
+          data: { createdById: sentinel.id },
+        });
+        await tx.user.delete({ where: { id: target.id } });
       });
 
       await auditLog({
         actorId: actor.id,
-        event: "USUARIO_DESATIVADO",
+        event: "USUARIO_EXCLUIDO",
         entity: "User",
         entityId: target.id,
         metadata: {
           username: target.username,
-          motivo: "Possui histórico vinculado (pagamentos, solicitações, ações, importações ou fluxos)",
+          role: target.role,
+          historicoReatribuido: true,
         },
       });
 
       return ok({
-        user: serializeUser(user as UserWithWorks),
-        deactivated: true,
-        message: "Usuário tem histórico no sistema, então foi desativado em vez de excluído.",
+        deleted: true,
+        message: 'Usuário excluído. O histórico foi mantido como "Usuário removido".',
       });
     }
 

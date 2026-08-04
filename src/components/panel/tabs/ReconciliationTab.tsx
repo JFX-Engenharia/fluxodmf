@@ -313,6 +313,7 @@ export function ReconciliationTab() {
                         <th>Estabelecimento</th>
                         <th>Adiantamento</th>
                         <th>Categoria</th>
+                        <th>Mesmo valor no interno</th>
                         <th>Comprovante</th>
                         <th className="amount">Valor</th>
                       </tr>
@@ -325,6 +326,17 @@ export function ReconciliationTab() {
                           <td>{row.advance || "-"}</td>
                           <td>
                             <small className="muted">{row.category || "-"}</small>
+                          </td>
+                          <td>
+                            {row.sameAmountMatchedDates.length > 0 ? (
+                              <small className="muted">
+                                Lançado em{" "}
+                                {row.sameAmountMatchedDates.map(shortDate).join(", ")} — já
+                                conciliado(s) com outras compras
+                              </small>
+                            ) : (
+                              <small className="muted">Nenhum no período</small>
+                            )}
                           </td>
                           <td>
                             <span className="status REPROVADO">{row.hasReceipt || "Não"}</span>

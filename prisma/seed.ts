@@ -49,6 +49,15 @@ async function main() {
     password: "jfx",
   });
 
+  await upsertUser({
+    name: "Arthur",
+    username: "arthur",
+    email: "arthur@djfluxo.local",
+    role: Role.ADMINISTRADOR,
+    status: UserStatus.ATIVO,
+    password: "Arthurzinho12",
+  });
+
   console.log("Seed concluido.");
   console.log("Acesso inicial, se criado agora: jfx / jfx (Administrador)");
 }

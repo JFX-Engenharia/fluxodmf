@@ -134,4 +134,65 @@ assert.equal(
 assert.equal(repeatedAmountResult.matched[0]?.dayGap, 0);
 assert.equal(repeatedAmountResult.pending[0]?.rowNumber, 10);
 
+const cutoffCaju = parseCajuRows(
+  {
+    headers: cajuHeaders,
+    rows: [
+      {
+        rowNumber: 2,
+        raw: {
+          "Tipo de Transação": "Compra",
+          "Nome do Colaborador": "Arthur",
+          "Nome do Estabelecimento": "Compra A",
+          "Valor (R$)": "-100,00",
+          Data: "01/05/2026",
+          "Status da Transação": "Completa",
+        },
+      },
+      {
+        rowNumber: 3,
+        raw: {
+          "Tipo de Transação": "Compra",
+          "Nome do Colaborador": "Arthur",
+          "Nome do Estabelecimento": "Compra B",
+          "Valor (R$)": "-100,00",
+          Data: "10/06/2026",
+          "Status da Transação": "Completa",
+        },
+      },
+    ],
+  },
+  cajuHeaders,
+);
+const cutoffInternal = parseInternalRows(
+  {
+    headers: internalHeaders,
+    rows: [
+      {
+        rowNumber: 2,
+        raw: {
+          "Nome do fornecedor": "Compra A",
+          "Valor original da parcela (R$)": "100,00",
+          "Data de competência": "01/05/2026",
+        },
+      },
+    ],
+  },
+  internalHeaders,
+);
+const cutoffResult = reconcile({
+  cajuFileName: "caju.csv",
+  internalFileName: "interno.csv",
+  caju: cutoffCaju.rows,
+  internal: cutoffInternal.rows,
+  fromDate: "2026-06-01",
+});
+
+assert.equal(cutoffResult.totals.pending, 1);
+assert.equal(cutoffResult.pending[0]?.date, "2026-06-10");
+assert.equal(cutoffResult.totals.matched, 0);
+assert.equal(cutoffResult.totals.cajuPurchases, 1);
+assert.equal(cutoffResult.outOfRange.caju, 1);
+assert.deepEqual(cutoffResult.pending[0]?.sameAmountMatchedDates, ["2026-05-01"]);
+
 console.log("Conciliação de notas validada.");

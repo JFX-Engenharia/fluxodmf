@@ -3,6 +3,7 @@ import { Role } from "@prisma-generated/enums";
 export { Role };
 
 const PERMANENT_ACCOUNT_DELETION_USERNAME = "arthur";
+export const REMOVED_USER_SENTINEL = "usuario-removido";
 
 export function canPermanentlyDeleteUsers(username: string) {
   return username.trim().toLowerCase() === PERMANENT_ACCOUNT_DELETION_USERNAME;

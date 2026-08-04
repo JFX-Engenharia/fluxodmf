@@ -114,6 +114,10 @@ export type MatchedPair = {
 };
 
 export type IgnoredGroup = { type: string; count: number; amount: number };
+export type PendingPurchase = CajuTransaction & {
+  /** Datas de lançamentos internos do mesmo valor dentro da janela, todos já conciliados com outras compras. */
+  sameAmountMatchedDates: string[];
+};
 
 export type ReconciliationResult = {
   cajuFileName: string;
@@ -133,7 +137,7 @@ export type ReconciliationResult = {
     unmatchedInternal: number;
     unmatchedInternalAmount: number;
   };
-  pending: CajuTransaction[];
+  pending: PendingPurchase[];
   matched: MatchedPair[];
   unmatchedInternal: InternalEntry[];
 };
@@ -428,8 +432,6 @@ export function reconcile(input: {
   };
 
   const purchases: CajuTransaction[] = [];
-  let cajuOutOfRange = 0;
-
   for (const row of input.caju) {
     if (normalizeName(row.type) !== PURCHASE_TYPE) {
       addIgnored(row.type || "(sem tipo)", row.amount);
@@ -442,12 +444,10 @@ export function reconcile(input: {
       addIgnored(`Compra ${row.transactionStatus || "sem status"}`, row.amount);
       continue;
     }
-    if (!inRange(row.date)) {
-      cajuOutOfRange += 1;
-      continue;
-    }
     purchases.push(row);
   }
+
+  const cajuOutOfRange = purchases.filter((row) => !inRange(row.date)).length;
 
   const entries: InternalEntry[] = [];
   let internalOutOfRange = 0;
@@ -476,7 +476,17 @@ export function reconcile(input: {
   const takenCaju = new Set(matched.map((pair) => pair.caju.rowNumber));
   const takenInternal = new Set(matched.map((pair) => pair.internal.rowNumber));
 
-  const pending = purchases.filter((row) => !takenCaju.has(row.rowNumber));
+  const pending: PendingPurchase[] = purchases
+    .filter((row) => inRange(row.date) && !takenCaju.has(row.rowNumber))
+    .map((row) => ({
+      ...row,
+      sameAmountMatchedDates: unique(
+        (entryGroups.get(amountKey(row.amount)) ?? [])
+          .filter((entry) => dayGap(row.date, entry.date) <= MATCH_WINDOW_DAYS)
+          .map((entry) => entry.date),
+      ),
+    }));
+  const matchedInRange = matched.filter((pair) => inRange(pair.caju.date));
   const unmatchedInternal = entries.filter(
     (row) => inRange(row.date) && !takenInternal.has(row.rowNumber),
   );
@@ -493,16 +503,16 @@ export function reconcile(input: {
     ignored: [...ignoredMap.values()].sort((a, b) => b.count - a.count),
     outOfRange: { caju: cajuOutOfRange, internal: internalOutOfRange },
     totals: {
-      cajuPurchases: purchases.length,
+      cajuPurchases: purchases.length - cajuOutOfRange,
       internalEntries: entries.length,
-      matched: matched.length,
+      matched: matchedInRange.length,
       pending: pending.length,
       pendingAmount: sum(pending),
       unmatchedInternal: unmatchedInternal.length,
       unmatchedInternalAmount: sum(unmatchedInternal),
     },
     pending: pending.sort((a, b) => a.date.localeCompare(b.date)),
-    matched: matched.sort((a, b) => a.caju.date.localeCompare(b.caju.date)),
+    matched: matchedInRange.sort((a, b) => a.caju.date.localeCompare(b.caju.date)),
     unmatchedInternal: unmatchedInternal.sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
