@@ -14,7 +14,7 @@ import { canAdminister } from "@/lib/permissions";
 
 const actionSchema = z.object({
   flowId: z.string().min(1),
-  action: z.enum(["start_approval", "close", "reopen"]),
+  action: z.enum(["close", "reopen"]),
   reason: z.string().trim().optional(),
 });
 
@@ -71,19 +71,12 @@ export async function POST(request: Request) {
     let eventType: DailyFlowEventType;
     let auditEvent: string;
 
-    if (body.action === "start_approval") {
-      if (flow.status !== DailyFlowStatus.RASCUNHO) {
-        throw new ApiError(409, "Somente um fluxo em rascunho pode seguir para aprovação.");
-      }
-      nextStatus = DailyFlowStatus.EM_APROVACAO;
-      eventType = DailyFlowEventType.ENVIADO_APROVACAO;
-      auditEvent = "FLUXO_ENVIADO_APROVACAO";
-    } else if (body.action === "close") {
+    if (body.action === "close") {
       if (actor.role !== Role.APROVADOR && actor.role !== Role.ADMINISTRADOR) {
         throw new ApiError(403, "Somente um aprovador pode concluir o fluxo.");
       }
-      if (flow.status !== DailyFlowStatus.EM_APROVACAO) {
-        throw new ApiError(409, "O fluxo precisa estar em aprovação antes de ser fechado.");
+      if (flow.status === DailyFlowStatus.FECHADO) {
+        throw new ApiError(409, "O fluxo diário já está fechado.");
       }
       if (summary.undecidedCount > 0) {
         throw new ApiError(
@@ -126,21 +119,19 @@ export async function POST(request: Request) {
       return tx.dailyFlow.update({
         where: { id: flow.id },
         data:
-          body.action === "start_approval"
-            ? { status: nextStatus, startedById: actor.id, startedAt: now }
-            : body.action === "close"
-              ? {
-                  status: nextStatus,
-                  closedById: actor.id,
-                  closedAt: now,
-                  finalSummary: JSON.stringify(summary),
-                }
-              : {
-                  status: nextStatus,
-                  closedById: null,
-                  closedAt: null,
-                  finalSummary: "{}",
-                },
+          body.action === "close"
+            ? {
+                status: nextStatus,
+                closedById: actor.id,
+                closedAt: now,
+                finalSummary: JSON.stringify(summary),
+              }
+            : {
+                status: nextStatus,
+                closedById: null,
+                closedAt: null,
+                finalSummary: "{}",
+              },
         include: includeFlow,
       });
     });

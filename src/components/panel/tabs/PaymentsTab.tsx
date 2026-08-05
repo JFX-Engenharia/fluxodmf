@@ -8,7 +8,6 @@ import {
   Hourglass,
   ListChecks,
   LockKeyhole,
-  Play,
   RefreshCw,
   RotateCcw,
   Search,
@@ -224,7 +223,7 @@ export function PaymentsTab() {
   const batchPayments = payments.filter((payment) => batch.includes(payment.id));
   const batchTotal = batchPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
-  async function changeFlow(action: "start_approval" | "close" | "reopen", reason?: string) {
+  async function changeFlow(action: "close" | "reopen", reason?: string) {
     if (!selectedFlow) return;
     setFlowBusy(true);
     setError("");
@@ -245,13 +244,7 @@ export function PaymentsTab() {
       setFlowReopenOpen(false);
       setFlowReason("");
       setBatch([]);
-      setMessage(
-        action === "start_approval"
-          ? "Fluxo enviado para aprovação."
-          : action === "close"
-            ? "Fluxo diário fechado."
-            : "Fluxo diário reaberto.",
-      );
+      setMessage(action === "close" ? "Fluxo diário fechado." : "Fluxo diário reaberto.");
       reloadFlows();
       reload();
     } catch {
@@ -299,6 +292,7 @@ export function PaymentsTab() {
           : "Ação registrada.",
       );
       reload();
+      reloadFlows();
     } catch {
       setError("Falha de conexão ao executar a ação.");
     } finally {
@@ -428,6 +422,7 @@ export function PaymentsTab() {
     }
 
     reload();
+    reloadFlows();
   }
 
   function onSubmitModal(event: FormEvent) {
@@ -483,18 +478,7 @@ export function PaymentsTab() {
               ) : null}
             </div>
             <div className="button-row">
-              {selectedFlow.status === "RASCUNHO" ? (
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => void changeFlow("start_approval")}
-                  disabled={flowBusy}
-                >
-                  <Play size={16} />
-                  Enviar para aprovação
-                </button>
-              ) : null}
-              {selectedFlow.status === "EM_APROVACAO" && canConcludeFlow ? (
+              {selectedFlow.status !== "FECHADO" && canConcludeFlow ? (
                 <button
                   className="button success"
                   type="button"
@@ -503,11 +487,11 @@ export function PaymentsTab() {
                   title={
                     selectedFlow.summary.undecidedCount > 0
                       ? `Ainda existem ${selectedFlow.summary.undecidedCount} pagamento(s) aguardando decisão`
-                      : "Aprovar e bloquear o fluxo diário"
+                      : "Fechar e bloquear o fluxo diário"
                   }
                 >
                   <LockKeyhole size={16} />
-                  Aprovar e fechar fluxo
+                  Fechar fluxo
                 </button>
               ) : null}
               {selectedFlow.status === "FECHADO" ? (

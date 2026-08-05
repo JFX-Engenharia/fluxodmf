@@ -1,4 +1,4 @@
-import { PaymentStatus } from "@prisma-generated/enums";
+import { DailyFlowStatus, PaymentStatus } from "@prisma-generated/enums";
 import { handleApiError, ok } from "@/lib/api";
 import { requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -42,16 +42,24 @@ export async function GET() {
     await requireTab("dashboard");
 
     const statuses = Object.values(PaymentStatus);
+    const activeFlows = await prisma.dailyFlow.findMany({
+      where: { status: { not: DailyFlowStatus.FECHADO } },
+      select: { importBatchId: true },
+    });
+    const activeBatchIds = activeFlows.map((flow) => flow.importBatchId);
+
 
     const [statusGroups, works, accountPayments, byCategoryGroups, contributionGroups] =
       await Promise.all([
         prisma.payment.groupBy({
+          where: { importBatchId: { in: activeBatchIds } },
           by: ["status"],
           _count: { _all: true },
           _sum: { amount: true },
         }),
         prisma.work.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
         prisma.payment.findMany({
+          where: { importBatchId: { in: activeBatchIds } },
           select: {
             id: true,
             workId: true,
@@ -61,11 +69,13 @@ export async function GET() {
           },
         }),
         prisma.payment.groupBy({
+          where: { importBatchId: { in: activeBatchIds } },
           by: ["category"],
           _count: { _all: true },
           _sum: { amount: true },
         }),
         prisma.contribution.groupBy({
+          where: { importBatchId: { in: activeBatchIds } },
           by: ["workId"],
           _sum: { amount: true },
         }),
@@ -164,7 +174,10 @@ export async function GET() {
      * "hoje" ou "futuro" escondia justamente os vencidos, que sao os urgentes.
      */
     const openFlow = await prisma.payment.findMany({
-      where: { status: { in: UNDECIDED_STATUSES } },
+      where: {
+        importBatchId: { in: activeBatchIds },
+        status: { in: UNDECIDED_STATUSES },
+      },
       orderBy: [{ currentDueDate: "asc" }, { supplierName: "asc" }],
       take: 100,
       include: { work: true },
