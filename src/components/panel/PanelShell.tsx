@@ -169,18 +169,6 @@ const accountNavigationIds: readonly TabId[] = ["usuarios", "permissoes", "logs"
 function isTabId(value: string | null): value is TabId {
   return !!value && (TAB_IDS as readonly string[]).includes(value);
 }
-function openSystemHub() {
-  const width = Math.min(1180, Math.max(360, window.screen.availWidth - 80));
-  const height = Math.min(820, Math.max(560, window.screen.availHeight - 80));
-  const left = Math.max(0, Math.round((window.screen.availWidth - width) / 2));
-  const top = Math.max(0, Math.round((window.screen.availHeight - height) / 2));
-
-  window.open(
-    "https://gestaodj.com/",
-    "gestao-dj-hub",
-    `popup=yes,noopener=yes,noreferrer=yes,resizable=yes,scrollbars=yes,width=${width},height=${height},left=${left},top=${top}`,
-  );
-}
 
 
 export function PanelShell() {
@@ -429,15 +417,16 @@ export function PanelShell() {
             </div>
 
             <div className="account-menu">
-              <button
+              <a
                 className="system-hub-link"
-                type="button"
-                onClick={openSystemHub}
-                aria-label="Abrir Hub de sistemas em uma janela sobreposta"
+                href="https://gestaodj.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Abrir Hub de sistemas em uma nova aba"
                 title="Hub de sistemas"
               >
                 <Network size={19} aria-hidden="true" />
-              </button>
+              </a>
               <button
                 className="account-trigger"
                 type="button"
