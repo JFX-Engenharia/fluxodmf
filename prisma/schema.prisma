@@ -124,6 +124,7 @@ model User {
   reviewedPaymentRequests PaymentRequest[] @relation("PaymentRequestReviewedBy")
   requestApprovals PaymentRequestApproval[] @relation("PaymentRequestApprover")
   sessions      UserSession[]
+  devices       Device[]
   loginEvents   LoginEvent[]
   authProvider  String?
   externalSubject String?
@@ -139,6 +140,8 @@ model UserSession {
   id         String   @id @default(cuid())
   userId     String
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String?
+  boundDevice Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   provider   String   @default("local")
   ipAddress  String?
   userAgent  String?
@@ -149,6 +152,23 @@ model UserSession {
   revokedAt  DateTime?
 
   @@index([userId, revokedAt, expiresAt])
+  @@index([deviceId])
+}
+
+model Device {
+  id         String        @id @default(cuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String
+  name       String
+  userAgent  String?
+  createdAt  DateTime      @default(now())
+  lastSeenAt DateTime      @default(now())
+  revokedAt  DateTime?
+  sessions   UserSession[]
+
+  @@unique([userId, tokenHash])
+  @@index([userId, revokedAt])
 }
 
 model LoginEvent {

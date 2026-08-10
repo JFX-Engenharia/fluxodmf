@@ -3,13 +3,15 @@ import { z } from "zod";
 import { UserStatus } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { handleApiError } from "@/lib/api";
+import { DEVICE_COOKIE, resolveDevice } from "@/lib/device";
 import {
   createSessionToken,
   SESSION_COOKIE,
   verifyPassword,
 } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { recordLoginEvent } from "@/lib/session-info";
+import { enforceLoginRateLimit } from "@/lib/rate-limit";
+import { recordLoginEvent, sessionRequestInfo } from "@/lib/session-info";
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -27,6 +29,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = loginSchema.parse(await request.json());
     const username = body.username.trim().toLowerCase();
+    const initialRequestInfo = sessionRequestInfo(request);
+    enforceLoginRateLimit(initialRequestInfo.ipAddress, username);
     const user = await prisma.user.findUnique({ where: { username } });
 
     if (!user?.passwordHash) {
@@ -68,6 +72,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const device = await resolveDevice(
+      user.id,
+      request.cookies.get(DEVICE_COOKIE)?.value,
+      initialRequestInfo,
+    );
     const requestInfo = await recordLoginEvent(request, {
       userId: user.id,
       identifier: username,
@@ -84,6 +93,7 @@ export async function POST(request: NextRequest) {
         provider: "local",
       },
       requestInfo,
+      device.deviceId,
     );
 
     await auditLog({
@@ -111,6 +121,7 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 10,
       path: "/",
     });
+    response.cookies.set(DEVICE_COOKIE, device.token, device.cookie);
 
     return response;
   } catch (error) {

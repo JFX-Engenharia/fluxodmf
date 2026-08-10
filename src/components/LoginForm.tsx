@@ -17,11 +17,9 @@ type SignupResponse = {
 type Mode = "login" | "signup";
 
 const emptySignup = {
-  name: "",
   username: "",
   email: "",
   password: "",
-  phone: "",
 };
 
 const corporateMessages: Record<string, string> = {
@@ -137,28 +135,6 @@ export function LoginForm({ corporateStatus }: LoginFormProps) {
     return (
       <form className="form-grid" onSubmit={onSignup}>
         <div className="field">
-          <label htmlFor="signup-name">Nome completo</label>
-          <input
-            className="input"
-            id="signup-name"
-            value={signup.name}
-            onChange={(event) => setSignup({ ...signup, name: event.target.value })}
-            required
-          />
-        </div>
-
-        <div className="field">
-          <label htmlFor="signup-username">Usuário</label>
-          <input
-            className="input"
-            id="signup-username"
-            value={signup.username}
-            onChange={(event) => setSignup({ ...signup, username: event.target.value })}
-            required
-          />
-        </div>
-
-        <div className="field">
           <label htmlFor="signup-email">E-mail</label>
           <input
             className="input"
@@ -171,12 +147,13 @@ export function LoginForm({ corporateStatus }: LoginFormProps) {
         </div>
 
         <div className="field">
-          <label htmlFor="signup-phone">Telefone (opcional)</label>
+          <label htmlFor="signup-username">Usuário</label>
           <input
             className="input"
-            id="signup-phone"
-            value={signup.phone}
-            onChange={(event) => setSignup({ ...signup, phone: event.target.value })}
+            id="signup-username"
+            value={signup.username}
+            onChange={(event) => setSignup({ ...signup, username: event.target.value })}
+            required
           />
         </div>
 

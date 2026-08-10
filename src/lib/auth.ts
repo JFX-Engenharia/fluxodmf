@@ -27,6 +27,7 @@ export async function verifyPassword(password: string, passwordHash: string) {
 export async function createSessionToken(
   user: SessionTokenInput,
   requestInfo: SessionRequestInfo,
+  deviceId?: string,
 ) {
   const durationHours = user.provider === "oidc" ? 1 : 10;
   const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1_000);
@@ -38,6 +39,7 @@ export async function createSessionToken(
         ipAddress: requestInfo.ipAddress,
         userAgent: requestInfo.userAgent,
         device: requestInfo.device,
+        deviceId,
         expiresAt,
       },
     });
@@ -73,8 +75,18 @@ export async function getSession(): Promise<SessionUser | null> {
     const sessionId = String(payload.sid ?? "");
     if (!sessionId) return null;
 
-    const session = await prisma.userSession.findUnique({ where: { id: sessionId } });
-    if (!session || session.revokedAt || session.expiresAt <= new Date()) return null;
+    const session = await prisma.userSession.findUnique({
+      where: { id: sessionId },
+      include: { boundDevice: { select: { revokedAt: true } } },
+    });
+    if (
+      !session ||
+      session.revokedAt ||
+      session.expiresAt <= new Date() ||
+      session.boundDevice?.revokedAt
+    ) {
+      return null;
+    }
 
     if (Date.now() - session.lastSeenAt.getTime() > 5 * 60 * 1_000) {
       await prisma.userSession.update({

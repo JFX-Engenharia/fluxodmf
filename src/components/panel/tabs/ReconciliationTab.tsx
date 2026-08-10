@@ -172,7 +172,7 @@ export function ReconciliationTab() {
             ))}
           </div>
 
-          <div className="toolbar">
+          <div className="toolbar reconciliation-toolbar">
             <div className="field">
               <label htmlFor="recon-from">Considerar a partir de</label>
               <input

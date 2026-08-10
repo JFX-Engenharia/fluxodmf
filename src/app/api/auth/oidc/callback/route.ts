@@ -3,9 +3,10 @@ import { Role, UserStatus } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError } from "@/lib/api";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth";
+import { DEVICE_COOKIE, resolveDevice } from "@/lib/device";
 import { prisma } from "@/lib/db";
 import { exchangeCorporateCode } from "@/lib/oidc";
-import { recordLoginEvent } from "@/lib/session-info";
+import { recordLoginEvent, sessionRequestInfo } from "@/lib/session-info";
 
 const corporateMessages: Record<UserStatus, string> = {
   PENDENTE: "pending",
@@ -80,6 +81,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
+    const initialRequestInfo = sessionRequestInfo(request);
+    const device = await resolveDevice(
+      user.id,
+      request.cookies.get(DEVICE_COOKIE)?.value,
+      initialRequestInfo,
+    );
     const requestInfo = await recordLoginEvent(request, {
       userId: user.id,
       identifier: identity.email,
@@ -96,6 +103,7 @@ export async function GET(request: NextRequest) {
         provider: "oidc",
       },
       requestInfo,
+      device.deviceId,
     );
     await auditLog({
       actorId: user.id,
@@ -113,6 +121,7 @@ export async function GET(request: NextRequest) {
       maxAge: 60 * 60,
       path: "/",
     });
+    response.cookies.set(DEVICE_COOKIE, device.token, device.cookie);
     response.cookies.delete("fluxo_oidc_state");
     response.cookies.delete("fluxo_oidc_nonce");
     response.cookies.delete("fluxo_oidc_verifier");

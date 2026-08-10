@@ -6,6 +6,7 @@ import {
   BanknoteArrowUp,
   BarChart3,
   CalendarRange,
+  ChevronDown,
   ClipboardCheck,
   FileSpreadsheet,
   LayoutDashboard,
@@ -15,18 +16,21 @@ import {
   Scale,
   ScrollText,
   ShieldCheck,
+  Smartphone,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
 import { GlobalSearch } from "@/components/panel/GlobalSearch";
 import { ImportTaskWatcher } from "@/components/panel/ImportTaskWatcher";
 import { PanelContext, type PanelUser } from "@/components/panel/PanelContext";
-import { ThemeSwitcher } from "@/components/panel/ThemeSwitcher";
+import { AccessibilityMenu } from "@/components/panel/ThemeSwitcher";
 import { ApprovedPaymentsTab } from "@/components/panel/tabs/ApprovedPaymentsTab";
 import { DashboardTab } from "@/components/panel/tabs/DashboardTab";
+import { DevicesTab } from "@/components/panel/tabs/DevicesTab";
 import { AdvancesTab } from "@/components/panel/tabs/AdvancesTab";
 import { AnalyticsTab } from "@/components/panel/tabs/AnalyticsTab";
 import { FinancialCalendarTab } from "@/components/panel/tabs/FinancialCalendarTab";
@@ -57,8 +61,8 @@ type TabDefinition = {
 const tabDefinitions: TabDefinition[] = [
   {
     id: "dashboard",
-    label: "Dashboard",
-    title: "Dashboard",
+    label: "Início",
+    title: "Início",
     subtitle: "Métricas do fluxo de pagamentos",
     section: "PAINEL",
     icon: LayoutDashboard,
@@ -137,6 +141,15 @@ const tabDefinitions: TabDefinition[] = [
     Component: AdvancesTab,
   },
   {
+    id: "dispositivos",
+    label: "Dispositivos",
+    title: "Meus dispositivos",
+    subtitle: "Dispositivos autorizados para acessar sua conta",
+    section: "GESTÃO",
+    icon: Smartphone,
+    Component: DevicesTab,
+  },
+  {
     id: "usuarios",
     label: "Usuários",
     title: "Usuários",
@@ -165,7 +178,18 @@ const tabDefinitions: TabDefinition[] = [
   },
 ];
 
-const navSections = ["PAINEL", "OPERAÇÃO", "GESTÃO"];
+const primaryNavigationIds: readonly TabId[] = [
+  "dashboard",
+  "indicadores",
+  "importar",
+  "solicitacoes",
+  "conciliacao",
+  "pagamentos",
+  "aprovados",
+];
+const paymentSecondaryIds: readonly TabId[] = ["adiantamentos"];
+const accountNavigationIds: readonly TabId[] = ["usuarios", "permissoes", "logs", "dispositivos"];
+
 
 function isTabId(value: string | null): value is TabId {
   return !!value && (TAB_IDS as readonly string[]).includes(value);
@@ -178,6 +202,10 @@ export function PanelShell() {
   const [tabs, setTabs] = useState<TabId[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const navigationRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -204,6 +232,39 @@ export function PanelShell() {
       active = false;
     };
   }, [router]);
+  useEffect(() => {
+    function updateScrolledState() {
+      setScrolled(window.scrollY > 12);
+    }
+
+    updateScrolledState();
+    window.addEventListener("scroll", updateScrolledState, { passive: true });
+    return () => window.removeEventListener("scroll", updateScrolledState);
+  }, []);
+
+
+  useEffect(() => {
+    function closeMenus(event: MouseEvent) {
+      if (event.target instanceof Node && !navigationRef.current?.contains(event.target)) {
+        setPaymentsOpen(false);
+        setAccountOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      setPaymentsOpen(false);
+      setAccountOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeMenus);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeMenus);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   const requestedTab = searchParams.get("tab");
 
@@ -220,6 +281,8 @@ export function PanelShell() {
   const goToTab = useCallback(
     (tab: TabId) => {
       setMenuOpen(false);
+      setPaymentsOpen(false);
+      setAccountOpen(false);
       // replace evita empilhar uma entrada de historico por clique de aba.
       router.replace(`/painel?tab=${tab}`, { scroll: false });
     },
@@ -230,6 +293,18 @@ export function PanelShell() {
     () => tabDefinitions.filter((tab) => tabs.includes(tab.id)),
     [tabs],
   );
+  const primaryTabs = primaryNavigationIds.flatMap((id) => {
+    const tab = visibleTabs.find((item) => item.id === id);
+    return tab ? [tab] : [];
+  });
+  const paymentSecondaryTabs = paymentSecondaryIds.flatMap((id) => {
+    const tab = visibleTabs.find((item) => item.id === id);
+    return tab ? [tab] : [];
+  });
+  const accountTabs = accountNavigationIds.flatMap((id) => {
+    const tab = visibleTabs.find((item) => item.id === id);
+    return tab ? [tab] : [];
+  });
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -256,42 +331,73 @@ export function PanelShell() {
         <a className="skip-link" href="#conteudo-principal">
           Ir para o conteúdo
         </a>
+
         {menuOpen ? (
           <button
-            className="sidebar-backdrop"
+            className="nav-backdrop"
             type="button"
             aria-label="Fechar menu"
-            onClick={() => setMenuOpen(false)}
+            onClick={() => {
+              setMenuOpen(false);
+              setPaymentsOpen(false);
+              setAccountOpen(false);
+            }}
           />
         ) : null}
-        <aside className={clsx("sidebar", menuOpen && "open")}>
-          <div className="sidebar-header">
+
+        <header
+          className={clsx("top-navigation", scrolled && "scrolled")}
+          ref={navigationRef}
+        >
+          <div className="brand-lockup">
             <BrandMark />
-            <div className="sidebar-title">
+            <div>
               <strong>DJ Fluxo</strong>
               <span>Fluxo de pagamentos</span>
             </div>
-            <button
-              className="icon-button mobile-menu"
-              type="button"
-              title="Fechar menu"
-              aria-label="Fechar menu"
-              onClick={() => setMenuOpen(false)}
-            >
-              <X size={18} />
-            </button>
           </div>
 
-          <nav className="nav-list" aria-label="Menu principal">
-            {navSections.map((section) => {
-              const sectionItems = visibleTabs.filter((tab) => tab.section === section);
-              if (!sectionItems.length) return null;
+          <button
+            className="icon-button mobile-nav-trigger"
+            type="button"
+            aria-label={menuOpen ? "Fechar menu" : "Abrir menu"}
+            aria-expanded={menuOpen}
+            aria-controls="panel-navigation"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
 
-              return (
-                <div className="nav-section" key={section}>
-                  <span className="nav-section-title">{section}</span>
-                  <div className="nav-section-items">
-                    {sectionItems.map((tab) => {
+          <nav
+            className={clsx("top-nav", menuOpen && "open")}
+            id="panel-navigation"
+            aria-label="Menu principal"
+          >
+            <div className="primary-nav-items">
+              {primaryTabs
+                .filter((tab) => tab.id !== "pagamentos" && tab.id !== "aprovados")
+                .map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={clsx("nav-link", tab.id === activeTab && "active")}
+                      onClick={() => goToTab(tab.id)}
+                      aria-current={tab.id === activeTab ? "page" : undefined}
+                    >
+                      <Icon size={17} />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+
+              {primaryTabs.some((tab) => tab.id === "pagamentos" || tab.id === "aprovados") ||
+              paymentSecondaryTabs.length ? (
+                <div className="payments-group">
+                  {primaryTabs
+                    .filter((tab) => tab.id === "pagamentos" || tab.id === "aprovados")
+                    .map((tab) => {
                       const Icon = tab.icon;
                       return (
                         <button
@@ -301,58 +407,123 @@ export function PanelShell() {
                           onClick={() => goToTab(tab.id)}
                           aria-current={tab.id === activeTab ? "page" : undefined}
                         >
-                          <Icon size={18} />
+                          <Icon size={17} />
+                          <span>{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  {paymentSecondaryTabs.length ? (
+                    <button
+                      className="nav-dropdown-toggle"
+                      type="button"
+                      aria-label="Abrir opções de pagamentos"
+                      aria-expanded={paymentsOpen}
+                      onClick={() => {
+                        setPaymentsOpen((open) => !open);
+                        setAccountOpen(false);
+                      }}
+                    >
+                      <ChevronDown size={15} />
+                    </button>
+                  ) : null}
+                  {paymentSecondaryTabs.length ? (
+                    <div className={clsx("nav-submenu", paymentsOpen && "open")}>
+                      {paymentSecondaryTabs.map((tab) => {
+                        const Icon = tab.icon;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            className={clsx("nav-link", tab.id === activeTab && "active")}
+                            onClick={() => goToTab(tab.id)}
+                            aria-current={tab.id === activeTab ? "page" : undefined}
+                          >
+                            <Icon size={17} />
+                            <span>{tab.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="account-menu">
+              <button
+                className="account-trigger"
+                type="button"
+                aria-label={`Abrir menu da conta de ${user.name}`}
+                aria-haspopup="dialog"
+                aria-expanded={accountOpen}
+                onClick={() => {
+                  setAccountOpen((open) => !open);
+                  setPaymentsOpen(false);
+                }}
+              >
+                <span className="user-avatar" aria-hidden="true">
+                  {user.name
+                    .split(" ")
+                    .slice(0, 2)
+                    .map((part) => part[0])
+                    .join("")
+                    .toUpperCase()}
+                </span>
+                <span className="account-summary">
+                  <strong>{user.name}</strong>
+                  <small>{roleLabels[user.role]}</small>
+                </span>
+                <ChevronDown size={15} aria-hidden="true" />
+              </button>
+
+              <div
+                className={clsx("account-dropdown", accountOpen && "open")}
+                role="dialog"
+                aria-label="Conta e acessibilidade"
+              >
+                <div className="account-heading">
+                  <UserRound size={17} />
+                  <span>
+                    <strong>{user.name}</strong>
+                    <small>{roleLabels[user.role]}</small>
+                  </span>
+                </div>
+                {accountTabs.length ? (
+                  <div className="account-links">
+                    {accountTabs.map((tab) => {
+                      const Icon = tab.icon;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          className={clsx("nav-link", tab.id === activeTab && "active")}
+                          onClick={() => goToTab(tab.id)}
+                          aria-current={tab.id === activeTab ? "page" : undefined}
+                        >
+                          <Icon size={17} />
                           <span>{tab.label}</span>
                         </button>
                       );
                     })}
                   </div>
-                </div>
-              );
-            })}
-          </nav>
-
-          <div className="sidebar-footer">
-            <button className="button secondary" type="button" onClick={logout}>
-              <LogOut size={16} />
-              Sair
-            </button>
-          </div>
-        </aside>
-
-        <main className="main" id="conteudo-principal" tabIndex={-1}>
-          <header className="topbar">
-            <div className="button-row">
-              <button
-                className="icon-button mobile-menu"
-                type="button"
-                title="Abrir menu"
-                aria-label="Abrir menu"
-                onClick={() => setMenuOpen(true)}
-              >
-                <Menu size={18} />
-              </button>
-              <div className="page-title">
-                <h1>{current.title}</h1>
-                <p>{current.subtitle}</p>
+                ) : null}
+                <AccessibilityMenu />
+                <button className="account-logout" type="button" onClick={logout}>
+                  <LogOut size={17} />
+                  Sair
+                </button>
               </div>
             </div>
-            <GlobalSearch />
-            <ThemeSwitcher />
-            <div className="topbar-user" aria-label={`Usuário: ${user.name}`}>
-              <span className="user-avatar" aria-hidden="true">
-                {user.name
-                  .split(" ")
-                  .slice(0, 2)
-                  .map((part) => part[0])
-                  .join("")
-                  .toUpperCase()}
-              </span>
-              <span>
-                <strong>{user.name}</strong>
-                <small>{roleLabels[user.role]}</small>
-              </span>
+          </nav>
+        </header>
+
+        <main className="main" id="conteudo-principal" tabIndex={-1}>
+          <header className="page-toolbar">
+            <div className="page-title">
+              <h1>{current.title}</h1>
+              <p>{current.subtitle}</p>
             </div>
+            <GlobalSearch />
           </header>
           <div className="content">
             <ActiveComponent />

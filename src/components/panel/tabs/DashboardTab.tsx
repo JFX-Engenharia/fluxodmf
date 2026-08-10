@@ -59,7 +59,7 @@ function daysLate(dueDate: string, referenceDate: string) {
 }
 
 export function DashboardTab() {
-  const { goToTab } = usePanel();
+  const { goToTab, tabs } = usePanel();
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -96,6 +96,12 @@ export function DashboardTab() {
   const { totals } = data;
   const balance = Number((totals.contribution - totals.openAmount).toFixed(2));
   const maxCategory = data.byCategory[0]?.amount ?? 0;
+  const maxStatusCount = Math.max(...data.statusCards.map((card) => card.count), 1);
+  const coverage =
+    totals.openAmount > 0
+      ? Math.max(0, Math.min(100, (totals.contribution / totals.openAmount) * 100))
+      : 100;
+  const detailsTab = tabs.includes("pagamentos") ? "pagamentos" : "aprovados";
 
   if (totals.count === 0) {
     return (
@@ -132,219 +138,199 @@ export function DashboardTab() {
   }
 
   return (
-    <>
-      <section className="stats-grid" aria-label="Resumo do fluxo">
-        <div className="stat">
-          <span>Pagamentos</span>
-          <strong>{totals.count}</strong>
-          <small>{money(totals.amount)} no total</small>
-        </div>
-        <div className="stat">
-          <span>Em aberto</span>
-          <strong>{money(totals.openAmount)}</strong>
-          <small>a sair do caixa</small>
-        </div>
-        <div className="stat">
-          <span>Vencidos</span>
-          <strong style={{ color: totals.overdueCount > 0 ? "var(--danger)" : undefined }}>
-            {totals.overdueCount}
-          </strong>
-          <small>
-            {totals.overdueCount > 0 ? money(totals.overdueAmount) : "nada em atraso"}
-          </small>
-        </div>
-        <div className="stat">
-          <span>Aportes</span>
-          <strong>{money(totals.contribution)}</strong>
-          <small>entradas previstas</small>
-        </div>
-        <div className="stat">
-          <span>Saldo</span>
-          <strong style={{ color: balance < 0 ? "var(--danger)" : "var(--success)" }}>
+    <section className="finance-dashboard-grid" aria-label="Resumo financeiro">
+      <article className="finance-card finance-balance-card">
+        <header className="finance-card-header">
+          <div>
+            <span className="finance-card-kicker">Visão financeira</span>
+            <h2>Saldo projetado</h2>
+          </div>
+          <span className="finance-card-count">{totals.count} pagamentos</span>
+        </header>
+
+        <div className="finance-balance-total">
+          <strong style={{ color: balance < 0 ? "var(--danger)" : "var(--text)" }}>
             {money(balance)}
           </strong>
-          <small>{balance < 0 ? "aporte insuficiente" : "aporte cobre o fluxo"}</small>
+          <small>{money(totals.amount)} no fluxo total</small>
         </div>
-      </section>
 
-      <section className="section">
-        <div className="section-header">
-          <h2>Cobertura por conta</h2>
-        </div>
-        <div className="panel">
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Conta</th>
-                  <th>Lançamentos</th>
-                  <th className="amount">Em aberto</th>
-                  <th className="amount">Aporte</th>
-                  <th className="amount">Saldo</th>
-                  <th>Cobertura</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.byAccount.map((account) => (
-                  <tr key={account.workId}>
-                    <td>{account.name}</td>
-                    <td>{account.count}</td>
-                    <td className="amount">
-                      <Money value={account.openAmount} />
-                    </td>
-                    <td className="amount">
-                      <Money value={account.contribution} />
-                    </td>
-                    <td
-                      className="amount"
-                      style={{ color: account.balance < 0 ? "var(--danger)" : undefined }}
-                    >
-                      <Money value={account.balance} />
-                    </td>
-                    <td>
-                      {account.coverage === null ? (
-                        <span className="muted">-</span>
-                      ) : (
-                        <span
-                          className={`status ${account.coverage >= 100 ? "APROVADO" : "PENDENTE"}`}
-                        >
-                          {account.coverage.toFixed(0)}%
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {data.byAccount.length === 0 ? (
-                  <tr>
-                    <td className="daily-flow-empty" colSpan={6}>
-                      Nenhuma conta com movimento. Importe uma planilha para começar.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+        <div className="finance-summary-pills">
+          <div>
+            <span>Em aberto</span>
+            <strong>{money(totals.openAmount)}</strong>
+          </div>
+          <div>
+            <span>Aportes</span>
+            <strong>{money(totals.contribution)}</strong>
           </div>
         </div>
-      </section>
 
-      <section className="split-grid">
-        <div className="section">
-          <div className="section-header">
-            <h2>Fluxo em aberto ({data.flow.length})</h2>
-            {totals.todayCount > 0 ? (
-              <span className="muted">{totals.todayCount} vence(m) hoje</span>
-            ) : null}
-          </div>
-          <div className="panel">
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Fornecedor</th>
-                    <th>Conta</th>
-                    <th>Vencimento</th>
-                    <th>Status</th>
-                    <th className="amount">Valor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.flow.map((payment) => {
-                    const late = payment.overdue
-                      ? daysLate(payment.currentDueDate, data.referenceDate)
-                      : 0;
-
-                    return (
-                      <tr key={payment.id}>
-                        <td>
-                          {payment.supplierName}
-                          <br />
-                          <small className="muted">{payment.description}</small>
-                        </td>
-                        <td>{payment.work.name}</td>
-                        <td>
-                          <span style={{ color: payment.overdue ? "var(--danger)" : undefined }}>
-                            {shortDate(payment.currentDueDate)}
-                          </span>
-                          {payment.overdue ? (
-                            <>
-                              <br />
-                              <small style={{ color: "var(--danger)" }}>
-                                vencido há {late} {late === 1 ? "dia" : "dias"}
-                              </small>
-                            </>
-                          ) : null}
-                          {payment.dueToday ? (
-                            <>
-                              <br />
-                              <small style={{ color: "var(--warning)" }}>vence hoje</small>
-                            </>
-                          ) : null}
-                        </td>
-                        <td>
-                          <StatusBadge status={payment.status} />
-                        </td>
-                        <td className="amount">
-                          <Money value={payment.amount} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {data.flow.length === 0 ? (
-                    <tr>
-                      <td className="daily-flow-empty" colSpan={5}>
-                        {totals.count > 0
-                          ? "Sessão de aprovação concluída: todos os pagamentos foram pagos, reprovados ou remarcados."
-                          : "Nenhum pagamento importado. Comece pela aba Importação."}
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+        <div className="finance-card-subheading">
+          <h3>Cobertura por conta</h3>
+          <span>{data.byAccount.length} contas</span>
+        </div>
+        <div className="finance-account-list">
+          {data.byAccount.slice(0, 3).map((account) => (
+            <div className="finance-account-card" key={account.workId}>
+              <span>{account.name}</span>
+              <strong style={{ color: account.balance < 0 ? "var(--danger)" : undefined }}>
+                <Money value={account.balance} />
+              </strong>
+              <small>
+                {account.coverage === null ? "Sem movimento" : `${account.coverage.toFixed(0)}% coberto`}
+              </small>
             </div>
-          </div>
+          ))}
+          {data.byAccount.length === 0 ? (
+            <p className="finance-card-empty">Nenhuma conta com movimento.</p>
+          ) : null}
         </div>
+      </article>
 
-        <div className="section">
-          <div className="section-header">
+      <article className="finance-card finance-distribution-card">
+        <header className="finance-card-header">
+          <h2>Distribuição</h2>
+          <span className="finance-card-count">Por status</span>
+        </header>
+        <div className="finance-status-chart" aria-label="Pagamentos por status">
+          {data.statusCards.slice(0, 6).map((card) => (
+            <div className="finance-status-column" key={card.status} title={statusLabels[card.status]}>
+              <div className="finance-status-track">
+                <span
+                  style={{
+                    height: `${Math.max(16, (card.count / maxStatusCount) * 100)}%`,
+                  }}
+                >
+                  <i>{card.count}</i>
+                </span>
+              </div>
+              <small>{statusLabels[card.status]}</small>
+            </div>
+          ))}
+          {data.statusCards.length === 0 ? (
+            <p className="finance-card-empty">Sem pagamentos para distribuir.</p>
+          ) : null}
+        </div>
+      </article>
+
+      <article className="finance-card finance-transactions-card">
+        <header className="finance-card-header">
+          <div>
+            <span className="finance-card-kicker">Próximos compromissos</span>
+            <h2>Fluxo em aberto</h2>
+          </div>
+          <button className="finance-card-link" type="button" onClick={() => goToTab(detailsTab)}>
+            Ver todos
+          </button>
+        </header>
+        <div className="finance-transaction-list">
+          {data.flow.slice(0, 5).map((payment) => {
+            const late = payment.overdue
+              ? daysLate(payment.currentDueDate, data.referenceDate)
+              : 0;
+            return (
+              <div className="finance-transaction" key={payment.id}>
+                <span className="finance-transaction-avatar" aria-hidden="true">
+                  {payment.supplierName.slice(0, 1).toUpperCase()}
+                </span>
+                <div>
+                  <strong>{payment.supplierName}</strong>
+                  <small>
+                    {payment.overdue
+                      ? `Vencido há ${late} ${late === 1 ? "dia" : "dias"}`
+                      : payment.dueToday
+                        ? "Vence hoje"
+                        : shortDate(payment.currentDueDate)}
+                  </small>
+                </div>
+                <div className="finance-transaction-value">
+                  <strong><Money value={payment.amount} /></strong>
+                  <StatusBadge status={payment.status} />
+                </div>
+              </div>
+            );
+          })}
+          {data.flow.length === 0 ? (
+            <p className="finance-card-empty">Nenhum pagamento em aberto.</p>
+          ) : null}
+        </div>
+      </article>
+
+      <article className="finance-card finance-insight-card">
+        <span className="finance-card-kicker">Leitura rápida</span>
+        <h2>Como está o fluxo?</h2>
+        <strong>
+          {totals.overdueCount > 0
+            ? `${totals.overdueCount} vencido${totals.overdueCount === 1 ? "" : "s"}`
+            : balance < 0
+              ? "Aporte insuficiente"
+              : "Fluxo coberto"}
+        </strong>
+        <p>
+          {totals.overdueCount > 0
+            ? `${money(totals.overdueAmount)} aguardando regularização.`
+            : balance < 0
+              ? `Faltam ${money(Math.abs(balance))} para cobrir o fluxo.`
+              : "Os aportes previstos cobrem os pagamentos em aberto."}
+        </p>
+        <button className="button secondary" type="button" onClick={() => goToTab("importar")}>
+          Revisar fluxo <ArrowRight size={15} />
+        </button>
+      </article>
+
+      <article className="finance-card finance-expenses-card">
+        <header className="finance-card-header">
+          <div>
+            <span className="finance-card-kicker">Composição das despesas</span>
             <h2>Por categoria</h2>
           </div>
-          <div className="panel pad">
-            <div className="detail-list">
-              {data.byCategory.slice(0, 12).map((row) => (
-                <div className="detail-item" key={row.category}>
-                  <span>{row.category}</span>
-                  <strong>
-                    <Money value={row.amount} />
-                  </strong>
-                  {/* Barra proporcional a maior categoria, para leitura rapida. */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      height: 4,
-                      borderRadius: 999,
-                      marginTop: 4,
-                      background: "var(--primary-soft)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        borderRadius: 999,
-                        background: "var(--primary)",
-                        width: `${maxCategory > 0 ? (row.amount / maxCategory) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-              {data.byCategory.length === 0 ? (
-                <p className="muted">Sem categorias importadas ainda.</p>
-              ) : null}
+          <strong>{money(totals.amount)}</strong>
+        </header>
+        <div className="finance-expense-chart">
+          {data.byCategory.slice(0, 7).map((row) => (
+            <div className="finance-expense-row" key={row.category}>
+              <div>
+                <span>{row.category}</span>
+                <strong><Money value={row.amount} /></strong>
+              </div>
+              <div className="finance-expense-track" aria-hidden="true">
+                <span
+                  style={{
+                    width: `${maxCategory > 0 ? (row.amount / maxCategory) * 100 : 0}%`,
+                  }}
+                />
+              </div>
             </div>
+          ))}
+          {data.byCategory.length === 0 ? (
+            <p className="finance-card-empty">Sem categorias importadas ainda.</p>
+          ) : null}
+        </div>
+      </article>
+
+      <article className="finance-card finance-coverage-card">
+        <header className="finance-card-header">
+          <h2>Cobertura do fluxo</h2>
+          <span className="finance-card-count">Aportes ÷ aberto</span>
+        </header>
+        <div
+          className="finance-coverage-ring"
+          style={{
+            background: `conic-gradient(var(--primary) ${coverage}%, var(--surface-muted) 0)`,
+          }}
+          aria-label={`${coverage.toFixed(0)}% do fluxo coberto`}
+        >
+          <div>
+            <strong>{coverage.toFixed(0)}%</strong>
+            <span>{coverage >= 100 ? "Coberto" : coverage >= 70 ? "Atenção" : "Crítico"}</span>
           </div>
         </div>
-      </section>
-
-    </>
+        <div className="finance-coverage-summary">
+          <div><span>Aportes</span><strong>{money(totals.contribution)}</strong></div>
+          <div><span>Em aberto</span><strong>{money(totals.openAmount)}</strong></div>
+        </div>
+      </article>
+    </section>
   );
 }

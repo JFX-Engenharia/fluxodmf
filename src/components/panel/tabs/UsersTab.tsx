@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { usePanel } from "@/components/panel/PanelContext";
 import { useFetchData } from "@/components/panel/useFetchData";
 import { dateTime, userStatusLabels } from "@/lib/format";
@@ -27,6 +27,15 @@ type UsersResponse = {
   works: { id: string; name: string }[];
   permissions: { canPermanentlyDeleteUsers: boolean };
   error?: string;
+};
+
+type AdminDeviceRow = {
+  id: string;
+  name: string;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
 };
 
 /** Cor do badge por status, reaproveitando as classes de status de pagamento. */
@@ -80,6 +89,10 @@ export function UsersTab() {
   const [confirmDelete, setConfirmDelete] = useState<PanelUserRow | null>(null);
   const [editing, setEditing] = useState<PanelUserRow | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [devices, setDevices] = useState<AdminDeviceRow[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [deviceBusyId, setDeviceBusyId] = useState("");
+  const deviceRequestId = useRef(0);
 
   const users = data?.users ?? [];
   const works = data?.works ?? [];
@@ -90,11 +103,60 @@ export function UsersTab() {
     setEditForm(editFormFor(target));
     setError("");
     setMessage("");
+    void loadDevices(target.id);
   }
 
   function closeEditing() {
+    deviceRequestId.current += 1;
     setEditing(null);
     setEditForm(null);
+    setDevices([]);
+    setDevicesLoading(false);
+  }
+
+  async function loadDevices(userId: string) {
+    const requestId = ++deviceRequestId.current;
+    setDevicesLoading(true);
+    setDevices([]);
+    try {
+      const response = await fetch(`/api/admin/devices?userId=${encodeURIComponent(userId)}`, {
+        cache: "no-store",
+      });
+      const value = (await response.json()) as {
+        devices?: AdminDeviceRow[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(value.error ?? "Não foi possível carregar os dispositivos.");
+      if (requestId === deviceRequestId.current) setDevices(value.devices ?? []);
+    } catch (caught) {
+      if (requestId === deviceRequestId.current) {
+        setError(caught instanceof Error ? caught.message : "Falha de conexão.");
+      }
+    } finally {
+      if (requestId === deviceRequestId.current) setDevicesLoading(false);
+    }
+  }
+
+  async function revokeDevice(device: AdminDeviceRow) {
+    if (!editing || !window.confirm(`Revogar ${device.name} de ${editing.name}?`)) return;
+    setDeviceBusyId(device.id);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/devices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId: device.id }),
+      });
+      const value = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(value.error ?? "Não foi possível revogar o dispositivo.");
+      setMessage(`Dispositivo de ${editing.name} revogado.`);
+      await loadDevices(editing.id);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha de conexão.");
+    } finally {
+      setDeviceBusyId("");
+    }
   }
 
   async function saveEdit(event: FormEvent) {
@@ -584,6 +646,62 @@ export function UsersTab() {
               <small className="muted">
                 Gestor sem conta atribuída não entra na notificação do fluxo.
               </small>
+            </div>
+
+            <div className="field" role="group" aria-labelledby="edit-devices-label">
+              <span id="edit-devices-label" className="field-label">Dispositivos</span>
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Dispositivo</th>
+                      <th>Registrado em</th>
+                      <th>Último acesso</th>
+                      <th>Status</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {devices.map((device) => (
+                      <tr key={device.id}>
+                        <td title={device.userAgent ?? undefined}>{device.name}</td>
+                        <td>{dateTime(device.createdAt)}</td>
+                        <td>{dateTime(device.lastSeenAt)}</td>
+                        <td>
+                          <span className={`status ${device.revokedAt ? "CANCELADO" : "APROVADO"}`}>
+                            {device.revokedAt ? "Revogado" : "Ativo"}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className="button danger"
+                            type="button"
+                            disabled={!!device.revokedAt || deviceBusyId === device.id}
+                            onClick={() => void revokeDevice(device)}
+                          >
+                            <Trash2 size={14} />
+                            {deviceBusyId === device.id ? "Revogando..." : "Revogar"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!devicesLoading && devices.length === 0 ? (
+                      <tr>
+                        <td className="daily-flow-empty" colSpan={5}>
+                          Nenhum dispositivo registrado.
+                        </td>
+                      </tr>
+                    ) : null}
+                    {devicesLoading ? (
+                      <tr>
+                        <td className="daily-flow-empty" colSpan={5}>
+                          Carregando dispositivos...
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div className="field">

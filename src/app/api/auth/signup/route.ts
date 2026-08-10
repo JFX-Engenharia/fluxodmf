@@ -7,14 +7,12 @@ import { hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 const signupSchema = z.object({
-  name: z.string().min(3, "Informe seu nome completo."),
   username: z
     .string()
     .min(3, "O usuário precisa de ao menos 3 caracteres.")
     .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline."),
   email: z.email("E-mail inválido."),
   password: z.string().min(4, "A senha precisa de ao menos 4 caracteres."),
-  phone: z.string().optional(),
 });
 
 /**
@@ -42,10 +40,9 @@ export async function POST(request: Request) {
 
     const user = await prisma.user.create({
       data: {
-        name: body.name.trim(),
+        name: username,
         username,
         email,
-        phone: body.phone?.trim() || null,
         passwordHash: await hashPassword(body.password),
         role: Role.OPERADOR,
         status: UserStatus.PENDENTE,

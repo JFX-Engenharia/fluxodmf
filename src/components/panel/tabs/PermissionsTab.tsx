@@ -36,6 +36,7 @@ const tabLabels: Record<(typeof TAB_IDS)[number], string> = {
   conciliacao: "Conciliação",
   pagamentos: "Pagamentos",
   adiantamentos: "Adiantamentos",
+  dispositivos: "Dispositivos",
   usuarios: "Usuários",
   permissoes: "Permissões",
   logs: "Logs",
