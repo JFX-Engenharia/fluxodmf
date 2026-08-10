@@ -1,0 +1,19 @@
+# Snyk (https://snyk.io) policy file
+version: v1.5.0
+ignore:
+  SNYK-JS-INFLIGHT-6095116:
+    - '*':
+        reason: >-
+          Sem versao corrigida. Caminho exceljs>archiver>archiver-utils>glob@7.
+          O glob do archiver-utils so executa ao arquivar diretorios do disco;
+          o app usa exceljs apenas para gerar buffers xlsx (writeBuffer) e ler
+          uploads em memoria (xlsx.load), entao o codigo vulneravel nunca roda.
+        expires: 2027-08-10T00:00:00.000Z
+  SNYK-JS-UNZIPPER-18365659:
+    - '*':
+        reason: >-
+          Sem versao corrigida em nenhuma linha do unzipper. O Zip Slip exige
+          unzipper.Extract() gravando em disco; o exceljs usa unzipper apenas no
+          leitor por stream (workbook.xlsx.read), que o app nunca chama - toda
+          leitura de xlsx passa por workbook.xlsx.load (jszip, em memoria).
+        expires: 2027-08-10T00:00:00.000Z
