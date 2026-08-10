@@ -235,11 +235,7 @@ function RequestTable({
                   </td>
                   <td>
                     {paymentRequest.approvals
-                      .map((approval) =>
-                        approval.approvedAt
-                          ? `${approval.approver.name} ✓`
-                          : approval.approver.name,
-                      )
+                      .map((approval) => approval.approver.name)
                       .join(", ") || "Não definido"}
                     {paymentRequest.reviewedBy ? (
                       <small className="muted">

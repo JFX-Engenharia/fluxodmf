@@ -2,23 +2,12 @@
 
 import clsx from "clsx";
 import {
-  BadgeCheck,
-  BanknoteArrowUp,
-  BarChart3,
-  CalendarRange,
   ChevronDown,
-  ClipboardCheck,
-  FileSpreadsheet,
   LayoutDashboard,
   LogOut,
-  FilePlus2,
   Menu,
-  Scale,
-  ScrollText,
-  ShieldCheck,
-  Smartphone,
+  Network,
   UserRound,
-  Users,
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -54,7 +43,6 @@ type TabDefinition = {
   title: string;
   subtitle: string;
   section: string;
-  icon: React.ComponentType<{ size?: number }>;
   Component: React.ComponentType;
 };
 
@@ -65,7 +53,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Início",
     subtitle: "Métricas do fluxo de pagamentos",
     section: "PAINEL",
-    icon: LayoutDashboard,
     Component: DashboardTab,
   },
   {
@@ -74,7 +61,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Indicadores gerenciais",
     subtitle: "Fornecedores, obras, categorias, prazos e documentos",
     section: "PAINEL",
-    icon: BarChart3,
     Component: AnalyticsTab,
   },
   {
@@ -83,7 +69,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Calendário financeiro",
     subtitle: "Vencimentos, aportes e prestações de contas",
     section: "PAINEL",
-    icon: CalendarRange,
     Component: FinancialCalendarTab,
   },
   {
@@ -92,7 +77,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Importação de fluxo",
     subtitle: "Entrada da planilha de pagamentos",
     section: "PAINEL",
-    icon: FileSpreadsheet,
     Component: ImportTab,
   },
   {
@@ -101,7 +85,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Pagamentos aprovados",
     subtitle: "Aprovações dos fluxos importados por você",
     section: "OPERAÇÃO",
-    icon: BadgeCheck,
     Component: ApprovedPaymentsTab,
   },
   {
@@ -110,7 +93,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Solicitações de pagamento",
     subtitle: "Envie pagamentos para aprovação da obra",
     section: "PAINEL",
-    icon: FilePlus2,
     Component: PaymentRequestsTab,
   },
   {
@@ -119,7 +101,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Conciliação de despesas",
     subtitle: "Cartão CAJU x sistema interno: notas pendentes",
     section: "PAINEL",
-    icon: Scale,
     Component: ReconciliationTab,
   },
   {
@@ -128,7 +109,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Pagamentos",
     subtitle: "Aprovação e gestão do fluxo",
     section: "OPERAÇÃO",
-    icon: ClipboardCheck,
     Component: PaymentsTab,
   },
   {
@@ -137,7 +117,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Adiantamentos",
     subtitle: "Prestação de contas de colaboradores",
     section: "OPERAÇÃO",
-    icon: BanknoteArrowUp,
     Component: AdvancesTab,
   },
   {
@@ -146,7 +125,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Meus dispositivos",
     subtitle: "Dispositivos autorizados para acessar sua conta",
     section: "GESTÃO",
-    icon: Smartphone,
     Component: DevicesTab,
   },
   {
@@ -155,7 +133,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Usuários",
     subtitle: "Solicitações de acesso e cadastro",
     section: "GESTÃO",
-    icon: Users,
     Component: UsersTab,
   },
   {
@@ -164,7 +141,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Permissões",
     subtitle: "Níveis de acesso e contas",
     section: "GESTÃO",
-    icon: ShieldCheck,
     Component: PermissionsTab,
   },
   {
@@ -173,7 +149,6 @@ const tabDefinitions: TabDefinition[] = [
     title: "Logs de ações",
     subtitle: "Auditoria: quem alterou, o quê e quando",
     section: "GESTÃO",
-    icon: ScrollText,
     Component: LogsTab,
   },
 ];
@@ -194,6 +169,19 @@ const accountNavigationIds: readonly TabId[] = ["usuarios", "permissoes", "logs"
 function isTabId(value: string | null): value is TabId {
   return !!value && (TAB_IDS as readonly string[]).includes(value);
 }
+function openSystemHub() {
+  const width = Math.min(1180, Math.max(360, window.screen.availWidth - 80));
+  const height = Math.min(820, Math.max(560, window.screen.availHeight - 80));
+  const left = Math.max(0, Math.round((window.screen.availWidth - width) / 2));
+  const top = Math.max(0, Math.round((window.screen.availHeight - height) / 2));
+
+  window.open(
+    "https://gestaodj.com/",
+    "gestao-dj-hub",
+    `popup=yes,noopener=yes,noreferrer=yes,resizable=yes,scrollbars=yes,width=${width},height=${height},left=${left},top=${top}`,
+  );
+}
+
 
 export function PanelShell() {
   const router = useRouter();
@@ -376,42 +364,37 @@ export function PanelShell() {
             <div className="primary-nav-items">
               {primaryTabs
                 .filter((tab) => tab.id !== "pagamentos" && tab.id !== "aprovados")
-                .map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      className={clsx("nav-link", tab.id === activeTab && "active")}
-                      onClick={() => goToTab(tab.id)}
-                      aria-current={tab.id === activeTab ? "page" : undefined}
-                    >
-                      <Icon size={17} />
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
+                .map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={clsx("nav-link", tab.id === activeTab && "active")}
+                    onClick={() => goToTab(tab.id)}
+                    aria-current={tab.id === activeTab ? "page" : undefined}
+                  >
+                    {tab.id === "dashboard" ? (
+                      <LayoutDashboard size={17} aria-hidden="true" />
+                    ) : null}
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
 
               {primaryTabs.some((tab) => tab.id === "pagamentos" || tab.id === "aprovados") ||
               paymentSecondaryTabs.length ? (
                 <div className="payments-group">
                   {primaryTabs
                     .filter((tab) => tab.id === "pagamentos" || tab.id === "aprovados")
-                    .map((tab) => {
-                      const Icon = tab.icon;
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          className={clsx("nav-link", tab.id === activeTab && "active")}
-                          onClick={() => goToTab(tab.id)}
-                          aria-current={tab.id === activeTab ? "page" : undefined}
-                        >
-                          <Icon size={17} />
-                          <span>{tab.label}</span>
-                        </button>
-                      );
-                    })}
+                    .map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        className={clsx("nav-link", tab.id === activeTab && "active")}
+                        onClick={() => goToTab(tab.id)}
+                        aria-current={tab.id === activeTab ? "page" : undefined}
+                      >
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
                   {paymentSecondaryTabs.length ? (
                     <button
                       className="nav-dropdown-toggle"
@@ -428,21 +411,17 @@ export function PanelShell() {
                   ) : null}
                   {paymentSecondaryTabs.length ? (
                     <div className={clsx("nav-submenu", paymentsOpen && "open")}>
-                      {paymentSecondaryTabs.map((tab) => {
-                        const Icon = tab.icon;
-                        return (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            className={clsx("nav-link", tab.id === activeTab && "active")}
-                            onClick={() => goToTab(tab.id)}
-                            aria-current={tab.id === activeTab ? "page" : undefined}
-                          >
-                            <Icon size={17} />
-                            <span>{tab.label}</span>
-                          </button>
-                        );
-                      })}
+                      {paymentSecondaryTabs.map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          className={clsx("nav-link", tab.id === activeTab && "active")}
+                          onClick={() => goToTab(tab.id)}
+                          aria-current={tab.id === activeTab ? "page" : undefined}
+                        >
+                          <span>{tab.label}</span>
+                        </button>
+                      ))}
                     </div>
                   ) : null}
                 </div>
@@ -450,6 +429,15 @@ export function PanelShell() {
             </div>
 
             <div className="account-menu">
+              <button
+                className="system-hub-link"
+                type="button"
+                onClick={openSystemHub}
+                aria-label="Abrir Hub de sistemas em uma janela sobreposta"
+                title="Hub de sistemas"
+              >
+                <Network size={19} aria-hidden="true" />
+              </button>
               <button
                 className="account-trigger"
                 type="button"
@@ -490,21 +478,17 @@ export function PanelShell() {
                 </div>
                 {accountTabs.length ? (
                   <div className="account-links">
-                    {accountTabs.map((tab) => {
-                      const Icon = tab.icon;
-                      return (
-                        <button
-                          key={tab.id}
-                          type="button"
-                          className={clsx("nav-link", tab.id === activeTab && "active")}
-                          onClick={() => goToTab(tab.id)}
-                          aria-current={tab.id === activeTab ? "page" : undefined}
-                        >
-                          <Icon size={17} />
-                          <span>{tab.label}</span>
-                        </button>
-                      );
-                    })}
+                    {accountTabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        className={clsx("nav-link", tab.id === activeTab && "active")}
+                        onClick={() => goToTab(tab.id)}
+                        aria-current={tab.id === activeTab ? "page" : undefined}
+                      >
+                        <span>{tab.label}</span>
+                      </button>
+                    ))}
                   </div>
                 ) : null}
                 <AccessibilityMenu />
