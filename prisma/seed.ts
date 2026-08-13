@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import { hash } from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
@@ -9,57 +10,84 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: getDatabaseUrl() }),
 });
 
-
-async function upsertUser(input: {
+type SeedUserInput = {
   name: string;
   username: string;
   email: string;
   role: Role;
   status: UserStatus;
-  password: string;
+  passwordEnv: "SEED_ADMIN_PASSWORD" | "SEED_ARTHUR_PASSWORD";
   phone?: string;
-}) {
-  const passwordHash = await hash(input.password, 12);
-  return prisma.user.upsert({
+};
+
+async function createUserIfMissing(input: SeedUserInput) {
+  const existing = await prisma.user.findUnique({
     where: { username: input.username },
-    // O seed também roda quando o serviço inicia no Render. Não sobrescrever
-    // senha, perfil ou status de uma conta que já existe.
-    update: {},
-    create: {
-      name: input.name,
-      username: input.username,
-      email: input.email,
-      role: input.role,
-      status: input.status,
-      passwordHash,
-      phone: input.phone,
-    },
+    select: { id: true },
   });
+  if (existing) return null;
+
+  const configuredPassword = process.env[input.passwordEnv]?.trim();
+  const initialPassword = configuredPassword || randomBytes(24).toString("base64url");
+  const passwordHash = await hash(initialPassword, 12);
+
+  try {
+    await prisma.user.create({
+      data: {
+        name: input.name,
+        username: input.username,
+        email: input.email,
+        role: input.role,
+        status: input.status,
+        passwordHash,
+        phone: input.phone,
+      },
+    });
+  } catch (error) {
+    // Dois boots concorrentes podem tentar criar o mesmo seed. Se outra
+    // instancia venceu a corrida, nenhuma senha deve ser anunciada por este processo.
+    const concurrentUser = await prisma.user.findUnique({
+      where: { username: input.username },
+      select: { id: true },
+    });
+    if (concurrentUser) return null;
+    throw error;
+  }
+
+  return initialPassword;
 }
 
 async function main() {
-  // Login inicial pedido na especificacao: jfx / jfx. So o nome exibido e o
-  // e-mail sao genericos; as credenciais seguem as combinadas.
-  await upsertUser({
+  const initialCredentials: Array<{ username: string; password: string }> = [];
+
+  const adminPassword = await createUserIfMissing({
     name: "Administrador",
     username: "jfx",
     email: "admin@djfluxo.local",
     role: Role.ADMINISTRADOR,
     status: UserStatus.ATIVO,
-    password: "jfx",
+    passwordEnv: "SEED_ADMIN_PASSWORD",
   });
+  if (adminPassword) initialCredentials.push({ username: "jfx", password: adminPassword });
 
-  await upsertUser({
+  const arthurPassword = await createUserIfMissing({
     name: "Arthur",
     username: "arthur",
     email: "arthur@djfluxo.local",
     role: Role.ADMINISTRADOR,
     status: UserStatus.ATIVO,
-    password: "Arthurzinho12",
+    passwordEnv: "SEED_ARTHUR_PASSWORD",
   });
+  if (arthurPassword) {
+    initialCredentials.push({ username: "arthur", password: arthurPassword });
+  }
 
   console.log("Seed concluido.");
-  console.log("Acesso inicial, se criado agora: jfx / jfx (Administrador)");
+  for (const credential of initialCredentials) {
+    console.log(
+      `Credencial inicial criada para ${credential.username}: ${credential.password} (troque no primeiro login)`,
+    );
+  }
 }
 
 main()

@@ -62,7 +62,7 @@ export async function GET(request: Request) {
           appliedApprovalRule: true,
           actions: {
             orderBy: { createdAt: "desc" },
-            include: { actor: true },
+            include: { actor: { select: { id: true, name: true, role: true } } },
           },
         },
       }),

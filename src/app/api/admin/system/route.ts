@@ -180,7 +180,7 @@ export async function POST(request: Request) {
   try {
     const actor = await requireRole([Role.ADMINISTRADOR]);
     resetSchema.parse(await request.json());
-    return withIdempotency({
+    return await withIdempotency({
       request,
       scope: "system:reset",
       actorId: actor.id,

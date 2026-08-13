@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   try {
     const actor = await requireRole([Role.ADMINISTRADOR]);
     const backup = backupSchema.parse(await request.json());
-    return withIdempotency({
+    return await withIdempotency({
       request,
       scope: "system:restore",
       actorId: actor.id,

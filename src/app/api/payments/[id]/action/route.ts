@@ -51,7 +51,7 @@ export async function POST(
     const { id } = await context.params;
     const body = actionSchema.parse(await request.json());
     await requireMutationAllowed(user);
-    return withIdempotency({
+    return await withIdempotency({
       request,
       scope: `payment:${id}:${body.action}`,
       actorId: user.id,
@@ -238,7 +238,10 @@ export async function POST(
             include: { actor: { select: { id: true, name: true, role: true } } },
           },
           appliedApprovalRule: true,
-          actions: { orderBy: { createdAt: "desc" }, include: { actor: true } },
+          actions: {
+            orderBy: { createdAt: "desc" },
+            include: { actor: { select: { id: true, name: true, role: true } } },
+          },
         },
       });
     });

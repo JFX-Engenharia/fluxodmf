@@ -90,7 +90,10 @@ export async function POST(
             include: { actor: { select: { id: true, name: true, role: true } } },
           },
           appliedApprovalRule: true,
-          actions: { orderBy: { createdAt: "desc" }, include: { actor: true } },
+          actions: {
+            orderBy: { createdAt: "desc" },
+            include: { actor: { select: { id: true, name: true, role: true } } },
+          },
         },
       });
     });

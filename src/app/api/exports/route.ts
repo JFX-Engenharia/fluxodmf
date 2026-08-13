@@ -55,7 +55,8 @@ export async function GET(request: Request) {
         { header: "Conta", key: "work", width: 32 }, { header: "Responsável", key: "responsible", width: 28 },
         { header: "Aportes", key: "contributions", width: 16 }, { header: "Comprometido", key: "committed", width: 16 }, { header: "Saldo", key: "balance", width: 16 },
       ]);
-      const works = await prisma.work.findMany({ include: { approvers: { include: { user: true } }, contributions: { where: { importBatch: { createdAt: { gte: from, lte: to } } } }, payments: { where: { currentDueDate: { gte: from, lte: to }, status: { notIn: [PaymentStatus.REPROVADO, PaymentStatus.CANCELADO, PaymentStatus.TRANSFERIDO] } } } }, orderBy: { name: "asc" } });
+      // Select minimo: o relatorio so imprime o nome do responsavel.
+      const works = await prisma.work.findMany({ include: { approvers: { include: { user: { select: { name: true } } } }, contributions: { where: { importBatch: { createdAt: { gte: from, lte: to } } } }, payments: { where: { currentDueDate: { gte: from, lte: to }, status: { notIn: [PaymentStatus.REPROVADO, PaymentStatus.CANCELADO, PaymentStatus.TRANSFERIDO] } } } }, orderBy: { name: "asc" } });
       worksheet.addRows(works.map((work) => { const contributions = work.contributions.reduce((sum, item) => sum + Number(item.amount), 0); const committed = work.payments.reduce((sum, item) => sum + Number(item.amount), 0); return { work: work.name, responsible: work.approvers.map(({ user }) => user.name).join(", ") || "Não definido", contributions, committed, balance: contributions - committed }; }));
     } else if (query.type === "advances") {
       configureWorksheet(worksheet, [
@@ -71,7 +72,8 @@ export async function GET(request: Request) {
         { header: "Conta", key: "work", width: 28 }, { header: "Solicitante", key: "requester", width: 26 }, { header: "Responsável", key: "reviewer", width: 26 },
         { header: "Valor", key: "amount", width: 15 }, { header: "Vencimento", key: "due", width: 14 }, { header: "Status", key: "status", width: 16 },
       ]);
-      const rows = await prisma.paymentRequest.findMany({ where: { createdAt: { gte: from, lte: to } }, include: { work: true, requestedBy: true, reviewedBy: true }, orderBy: { createdAt: "desc" } });
+      // Select minimo: solicitante e responsavel entram na planilha so pelo nome.
+      const rows = await prisma.paymentRequest.findMany({ where: { createdAt: { gte: from, lte: to } }, include: { work: true, requestedBy: { select: { name: true } }, reviewedBy: { select: { name: true } } }, orderBy: { createdAt: "desc" } });
       worksheet.addRows(rows.map((row) => ({ created: row.createdAt, supplier: row.supplierName, description: row.description, work: row.work.name, requester: row.requestedBy.name, reviewer: row.reviewedBy?.name ?? "Pendente", amount: Number(row.amount), due: row.dueDate, status: row.status })));
     } else if (query.type === "documents") {
       configureWorksheet(worksheet, [
@@ -91,7 +93,9 @@ export async function GET(request: Request) {
         { header: "Data", key: "created", width: 20 }, { header: "Usuário", key: "actor", width: 28 }, { header: "Evento", key: "event", width: 34 },
         { header: "Entidade", key: "entity", width: 22 }, { header: "Identificador", key: "entityId", width: 28 }, { header: "Detalhes", key: "metadata", width: 60 },
       ]);
-      const rows = await prisma.auditLog.findMany({ where: { createdAt: { gte: from, lte: to } }, include: { actor: true }, orderBy: { createdAt: "desc" } });
+      // Select explicito: `include: { actor: true }` traria passwordHash e demais
+      // colunas sensiveis do usuario para a memoria a cada linha do relatorio.
+      const rows = await prisma.auditLog.findMany({ where: { createdAt: { gte: from, lte: to } }, include: { actor: { select: { id: true, name: true, role: true } } }, orderBy: { createdAt: "desc" } });
       worksheet.addRows(rows.map((row) => ({ created: row.createdAt, actor: row.actor?.name ?? "Sistema", event: row.event, entity: row.entity, entityId: row.entityId ?? "", metadata: row.metadata })));
     }
 

@@ -6,6 +6,7 @@ import { usePanel } from "@/components/panel/PanelContext";
 import { useFetchData } from "@/components/panel/useFetchData";
 import { dateTime, userStatusLabels } from "@/lib/format";
 import { Role, roleLabels } from "@/lib/permissions";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
 import { UserStatus } from "@prisma-generated/enums";
 
 export type PanelUserRow = {
@@ -381,10 +382,16 @@ export function UsersTab() {
                 className="input"
                 id="new-password"
                 type="password"
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
+                aria-describedby="new-password-help"
                 value={form.password}
                 onChange={(event) => setForm({ ...form, password: event.target.value })}
                 required
               />
+              <small id="new-password-help" className="muted">
+                Use entre {PASSWORD_MIN_LENGTH} e {PASSWORD_MAX_LENGTH} caracteres.
+              </small>
             </div>
             <div className="field">
               <label htmlFor="new-role">Perfil</label>
@@ -710,11 +717,16 @@ export function UsersTab() {
                 className="input"
                 id="edit-password"
                 type="password"
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
+                aria-describedby="edit-password-help"
                 value={editForm.password}
                 onChange={(event) => setEditForm({ ...editForm, password: event.target.value })}
                 placeholder="Em branco mantém a senha atual"
-                minLength={4}
               />
+              <small id="edit-password-help" className="muted">
+                Deixe em branco para manter a senha atual; se preencher, use entre {PASSWORD_MIN_LENGTH} e {PASSWORD_MAX_LENGTH} caracteres.
+              </small>
             </div>
 
             <div className="button-row">

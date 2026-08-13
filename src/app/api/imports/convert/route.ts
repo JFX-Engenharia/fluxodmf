@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError, handleApiError } from "@/lib/api";
 import { auditLog } from "@/lib/audit";
 import { requireTab } from "@/lib/auth";
+import { assertBodySize, MEGABYTE } from "@/lib/body-size";
 import { prisma } from "@/lib/db";
 import { buildFlowWorkbook, convertRawFile } from "@/lib/flow-converter";
 import { readConvertUpload } from "./upload";
@@ -14,6 +15,7 @@ const aportesSchema = z.array(
 );
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MAX_BODY_SIZE = 25 * MEGABYTE;
 
 /** JSON quebrado e erro do cliente: sem isto, o SyntaxError viraria um 500. */
 function parseAportes(value: FormDataEntryValue | null) {
@@ -38,14 +40,15 @@ export async function POST(request: Request) {
   try {
     const actor = await requireTab("importar");
 
+    assertBodySize(request, MAX_BODY_SIZE);
     const formData = await request.formData();
-    const file = readConvertUpload(formData);
+    const { file, data } = await readConvertUpload(formData);
     const aportes = aportesSchema.parse(parseAportes(formData.get("aportes")));
     const works = await prisma.work.findMany({ where: { active: true } });
 
     let conversion;
     try {
-      conversion = await convertRawFile(file.name, await file.arrayBuffer(), works);
+      conversion = await convertRawFile(file.name, data, works);
     } catch {
       throw new ApiError(
         400,

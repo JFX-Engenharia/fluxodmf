@@ -1,12 +1,18 @@
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { requireTab } from "@/lib/auth";
+import { assertBodySize, MEGABYTE } from "@/lib/body-size";
 import { prisma } from "@/lib/db";
+import { assertSpreadsheetContent } from "@/lib/file-signature";
 import { parsePaymentFile } from "@/lib/import-parser";
+
+const MAX_BODY_SIZE = 25 * MEGABYTE;
+const MAX_FILE_SIZE = 10 * MEGABYTE;
 
 export async function POST(request: Request) {
   try {
     await requireTab("importar");
 
+    assertBodySize(request, MAX_BODY_SIZE);
     const formData = await request.formData();
     const file = formData.get("file");
 
@@ -19,8 +25,15 @@ export async function POST(request: Request) {
       throw new ApiError(400, "Formato invalido. Use CSV ou XLSX.");
     }
 
+    if (file.size > MAX_FILE_SIZE) {
+      throw new ApiError(400, `O arquivo "${file.name}" excede o limite de 10 MB.`);
+    }
+
+    const data = await file.arrayBuffer();
+    assertSpreadsheetContent(new Uint8Array(data), file.name);
+
     const works = await prisma.work.findMany({ where: { active: true } });
-    const preview = await parsePaymentFile(file.name, await file.arrayBuffer(), works);
+    const preview = await parsePaymentFile(file.name, data, works);
 
     // Duplicidade contra o que ja esta no banco: a planilha do dia seguinte
     // repete as linhas que ainda nao foram pagas.

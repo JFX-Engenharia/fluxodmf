@@ -6,15 +6,17 @@ import { ApiError, handleApiError, ok } from "@/lib/api";
 import { hashPassword, requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canPermanentlyDeleteUsers, REMOVED_USER_SENTINEL } from "@/lib/permissions";
+import { passwordSchema } from "@/lib/validation";
 
 const createSchema = z.object({
   name: z.string().min(2, "Informe o nome."),
   username: z
     .string()
     .min(3, "O usuário precisa de ao menos 3 caracteres.")
+    .max(30, "O usuário pode ter no máximo 30 caracteres.")
     .regex(/^[a-zA-Z0-9._-]+$/, "Use apenas letras, números, ponto, hífen ou underline."),
-  email: z.email("E-mail inválido."),
-  password: z.string().min(4, "A senha precisa de ao menos 4 caracteres."),
+  email: z.email("E-mail inválido.").max(254, "O e-mail pode ter no máximo 254 caracteres."),
+  password: passwordSchema,
   role: z.enum(Role),
   phone: z.string().optional(),
   workIds: z.array(z.string()).default([]),
@@ -23,8 +25,8 @@ const createSchema = z.object({
 const updateSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(2).optional(),
-  email: z.email().optional(),
-  password: z.string().min(4).optional(),
+  email: z.email().max(254, "O e-mail pode ter no máximo 254 caracteres.").optional(),
+  password: passwordSchema.optional(),
   role: z.enum(Role).optional(),
   status: z.enum(UserStatus).optional(),
   phone: z.string().optional(),

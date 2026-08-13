@@ -2,8 +2,10 @@ import { Role, UserStatus } from "@prisma-generated/enums";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
+import { assertBodySize, MEGABYTE } from "@/lib/body-size";
 import { requireMutationAllowed, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { assertFileSignature } from "@/lib/file-signature";
 import { withIdempotency } from "@/lib/idempotency";
 
 const requestSchema = z.object({
@@ -17,6 +19,8 @@ const requestSchema = z.object({
 
 const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
+/** Teto do multipart: todos os anexos no limite + folga para campos e overhead. */
+const MAX_BODY_SIZE = MAX_ATTACHMENTS * MAX_ATTACHMENT_SIZE + 5 * MEGABYTE;
 const allowedMimeTypes: Record<string, true> = {
   "application/pdf": true,
   "image/jpeg": true,
@@ -124,7 +128,10 @@ export async function POST(request: Request) {
   try {
     const actor = await requireUser();
     await requireMutationAllowed(actor);
-    return withIdempotency({
+    // Barra o envio pelo cabecalho antes de bufferizar o multipart e antes de
+    // reservar chave de idempotencia. Os limites por anexo continuam valendo.
+    assertBodySize(request, MAX_BODY_SIZE);
+    return await withIdempotency({
       request,
       scope: "payment-request:create",
       actorId: actor.id,
@@ -160,13 +167,19 @@ export async function POST(request: Request) {
       throw new ApiError(409, "Esta obra ainda não possui responsáveis ativos para aprovar a solicitação.");
     }
 
+    // O tipo declarado no upload nao vale como prova: confere-se a assinatura do
+    // conteudo antes de gravar, e persiste-se o tipo detectado. O buffer e lido
+    // uma unica vez e serve tanto para a checagem quanto para a gravacao.
     const attachmentData = await Promise.all(
-      attachments.map(async (file) => ({
-        fileName: file.name.slice(0, 255),
-        mimeType: file.type,
-        size: file.size,
-        data: Buffer.from(await file.arrayBuffer()),
-      })),
+      attachments.map(async (file) => {
+        const data = Buffer.from(await file.arrayBuffer());
+        return {
+          fileName: file.name.slice(0, 255),
+          mimeType: assertFileSignature(data, file.type, file.name),
+          size: file.size,
+          data,
+        };
+      }),
     );
     const saved = await prisma.paymentRequest.create({
       data: {

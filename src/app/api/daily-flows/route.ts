@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     const actor = await requireTab("pagamentos");
     const body = actionSchema.parse(await request.json());
     await requireMutationAllowed(actor);
-    return withIdempotency({
+    return await withIdempotency({
       request,
       scope: `daily-flow:${body.flowId}:${body.action}`,
       actorId: actor.id,

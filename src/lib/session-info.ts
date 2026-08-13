@@ -14,9 +14,35 @@ export function normalizeIpAddress(value: string | null | undefined) {
   return address;
 }
 
+/**
+ * Resolve o IP do cliente na ordem em que se pode confiar no cabecalho.
+ *
+ * CF-Connecting-IP e X-Real-IP sao reescritos pelo proxy da borda
+ * (Cloudflare/Render) a cada requisicao, entao o cliente nao consegue forja-los.
+ * Ja o X-Forwarded-For e uma lista acumulativa: o cliente pode mandar entradas
+ * falsas, e cada proxy apenas acrescenta a sua a direita. Por isso lemos o
+ * elemento MAIS A DIREITA, o unico escrito pelo proxy mais proximo da aplicacao.
+ *
+ * Tudo isso pressupoe um proxy confiavel na frente da aplicacao: exposta
+ * diretamente a internet, qualquer um destes cabecalhos e forjavel.
+ */
+export function requestIpAddress(request: Request) {
+  const fromEdge =
+    normalizeIpAddress(request.headers.get("cf-connecting-ip")) ??
+    normalizeIpAddress(request.headers.get("x-real-ip"));
+  if (fromEdge) return fromEdge;
+
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",") ?? [];
+  for (let index = forwardedFor.length - 1; index >= 0; index -= 1) {
+    const candidate = normalizeIpAddress(forwardedFor[index]);
+    if (candidate) return candidate;
+  }
+
+  return null;
+}
+
 export function sessionRequestInfo(request: Request): SessionRequestInfo {
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const ipAddress = normalizeIpAddress(forwardedFor || request.headers.get("x-real-ip"));
+  const ipAddress = requestIpAddress(request);
   const userAgent = request.headers.get("user-agent");
   const source = userAgent ?? "";
 

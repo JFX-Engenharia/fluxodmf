@@ -37,15 +37,13 @@ npm run db:seed             # cria o usuário inicial
 npm run dev
 ```
 
-Acesse `http://localhost:3000` e entre com:
+Acesse `http://localhost:3000`. As senhas das contas administrativas iniciais
+podem ser definidas por `SEED_ADMIN_PASSWORD` e `SEED_ARTHUR_PASSWORD`. Quando
+uma delas não é informada, o seed gera uma senha aleatória e a imprime somente
+no momento em que cria a conta. Troque a senha no primeiro login.
 
-```
-usuário: jfx
-senha:   jfx
-```
-
-Esse usuário nasce como **Coordenador**. Troque a senha antes de usar para
-valer, e gere um `AUTH_SECRET` longo e aleatório — é ele que assina a sessão.
+Gere também um `AUTH_SECRET` longo e aleatório — é ele que assina a sessão e é
+obrigatório em produção.
 
 ### Scripts
 
@@ -66,8 +64,10 @@ valer, e gere um `AUTH_SECRET` longo e aleatório — é ele que assina a sessã
 
 Crie um PostgreSQL gerenciado na mesma região do Web Service e configure nele a
 variável `DATABASE_URL` com a **Internal Database URL**. Configure também um
-`AUTH_SECRET` longo e fixo. O comando `npm start` aplica somente as migrações
-versionadas, executa o seed idempotente e então inicia o Next.js.
+`AUTH_SECRET` longo e fixo. Ele precisa estar disponível tanto no ambiente de
+build/CI quanto no runtime do Render: o build de produção falha imediatamente se
+o segredo não estiver definido. O comando `npm start` aplica somente as
+migrações versionadas, executa o seed idempotente e então inicia o Next.js.
 
 Não use SQLite no filesystem padrão do Render: os arquivos gravados pelo serviço
 são efêmeros e desaparecem em reinícios e novos deploys.

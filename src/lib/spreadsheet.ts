@@ -7,6 +7,7 @@
 import { parse as parseCsv } from "csv-parse/sync";
 import ExcelJS from "exceljs";
 import { normalizeName } from "@/lib/cost-center";
+import { decodeSpreadsheetText } from "@/lib/file-signature";
 
 export type RawRow = Record<string, unknown>;
 
@@ -82,7 +83,11 @@ export function detectDelimiter(text: string) {
 }
 
 export function parseCsvRows(arrayBuffer: ArrayBuffer) {
-  const text = Buffer.from(arrayBuffer).toString("utf8");
+  const text = decodeSpreadsheetText(new Uint8Array(arrayBuffer));
+  if (text === null) {
+    throw new Error("Nao foi possivel decodificar o CSV como texto legivel.");
+  }
+
   return parseCsv(text, {
     bom: true,
     columns: true,

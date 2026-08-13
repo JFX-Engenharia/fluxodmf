@@ -1,6 +1,8 @@
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { auditLog } from "@/lib/audit";
 import { requireTab } from "@/lib/auth";
+import { assertBodySize, MEGABYTE } from "@/lib/body-size";
+import { assertSpreadsheetContent, SPREADSHEET_EXTENSIONS } from "@/lib/file-signature";
 import {
   parseCajuRows,
   parseInternalRows,
@@ -8,7 +10,8 @@ import {
   reconcile,
 } from "@/lib/reconciliation";
 
-const ACCEPTED_EXTENSIONS = ["csv", "xlsx", "xls"];
+const MAX_BODY_SIZE = 25 * MEGABYTE;
+const MAX_FILE_SIZE = 10 * MEGABYTE;
 
 function readUpload(formData: FormData, field: string, label: string) {
   const file = formData.get(field);
@@ -18,11 +21,21 @@ function readUpload(formData: FormData, field: string, label: string) {
   }
 
   const extension = file.name.split(".").pop()?.toLowerCase();
-  if (!extension || !ACCEPTED_EXTENSIONS.includes(extension)) {
+  if (!extension || !(SPREADSHEET_EXTENSIONS as readonly string[]).includes(extension)) {
     throw new ApiError(400, `Formato invalido em "${file.name}". Use CSV, XLS ou XLSX.`);
   }
 
+  if (file.size > MAX_FILE_SIZE) {
+    throw new ApiError(400, `O arquivo "${file.name}" excede o limite de 10 MB.`);
+  }
+
   return file;
+}
+
+async function readUploadContent(file: File) {
+  const data = await file.arrayBuffer();
+  assertSpreadsheetContent(new Uint8Array(data), file.name);
+  return data;
 }
 
 /** Aceita "2025-12-25" do input[type=date]. Vazio significa sem filtro. */
@@ -44,16 +57,22 @@ export async function POST(request: Request) {
   try {
     const actor = await requireTab("conciliacao");
 
+    assertBodySize(request, MAX_BODY_SIZE);
     const formData = await request.formData();
     const first = readUpload(formData, "fileA", "o extrato do sistema interno");
     const second = readUpload(formData, "fileB", "o extrato do cartao CAJU");
     const fromDate = readFromDate(formData.get("fromDate"));
 
+    const [firstData, secondData] = await Promise.all([
+      readUploadContent(first),
+      readUploadContent(second),
+    ]);
+
     let a, b;
     try {
       [a, b] = await Promise.all([
-        readStatement(first.name, await first.arrayBuffer()),
-        readStatement(second.name, await second.arrayBuffer()),
+        readStatement(first.name, firstData),
+        readStatement(second.name, secondData),
       ]);
     } catch {
       throw new ApiError(

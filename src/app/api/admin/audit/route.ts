@@ -99,7 +99,7 @@ export async function DELETE(request: Request) {
   try {
     const actor = await requireTab("logs");
     clearSchema.parse(await request.json());
-    return withIdempotency({
+    return await withIdempotency({
       request,
       scope: "audit:clear",
       actorId: actor.id,

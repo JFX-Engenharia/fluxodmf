@@ -3,6 +3,7 @@
 import { Building2, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
 
 type LoginResponse = {
   user?: { id: string };
@@ -164,10 +165,16 @@ export function LoginForm({ corporateStatus }: LoginFormProps) {
             id="signup-password"
             type="password"
             autoComplete="new-password"
+            minLength={PASSWORD_MIN_LENGTH}
+            maxLength={PASSWORD_MAX_LENGTH}
+            aria-describedby="signup-password-help"
             value={signup.password}
             onChange={(event) => setSignup({ ...signup, password: event.target.value })}
             required
           />
+          <small id="signup-password-help" className="muted">
+            Use entre {PASSWORD_MIN_LENGTH} e {PASSWORD_MAX_LENGTH} caracteres.
+          </small>
         </div>
 
         {error ? <div className="alert error" role="alert">{error}</div> : null}

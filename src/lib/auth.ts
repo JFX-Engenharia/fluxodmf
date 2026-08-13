@@ -12,8 +12,14 @@ type SessionTokenInput = Omit<SessionUser, "sessionId">;
 
 export const SESSION_COOKIE = "fluxo_session";
 
+const configuredAuthSecret = process.env.AUTH_SECRET?.trim();
+
+if (!configuredAuthSecret && process.env.NODE_ENV === "production") {
+  throw new Error("AUTH_SECRET nao configurado. Informe um segredo forte para assinar sessoes.");
+}
+
 const secret = new TextEncoder().encode(
-  process.env.AUTH_SECRET ?? "fluxo-dev-secret-change-me",
+  configuredAuthSecret ?? "fluxo-dev-secret-change-me",
 );
 
 export async function hashPassword(password: string) {
@@ -88,6 +94,8 @@ export async function getSession(): Promise<SessionUser | null> {
       return null;
     }
 
+    if (String(session.userId) !== String(payload.userId)) return null;
+
     if (Date.now() - session.lastSeenAt.getTime() > 5 * 60 * 1_000) {
       await prisma.userSession.update({
         where: { id: session.id },
@@ -96,7 +104,7 @@ export async function getSession(): Promise<SessionUser | null> {
     }
 
     return {
-      id: String(payload.userId),
+      id: String(session.userId),
       name: String(payload.name),
       username: String(payload.username),
       email: String(payload.email),
