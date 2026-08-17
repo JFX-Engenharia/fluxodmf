@@ -1,6 +1,7 @@
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { requireTab } from "@/lib/auth";
 import { assertBodySize, MEGABYTE } from "@/lib/body-size";
+import { UNDEFINED_WORK_SLUG } from "@/lib/cost-center";
 import { prisma } from "@/lib/db";
 import { convertRawFile } from "@/lib/flow-converter";
 import { readConvertUpload } from "../upload";
@@ -14,7 +15,9 @@ export async function POST(request: Request) {
 
     assertBodySize(request, MAX_BODY_SIZE);
     const { file, data } = await readConvertUpload(await request.formData());
-    const works = await prisma.work.findMany({ where: { active: true } });
+    const works = await prisma.work.findMany({
+      where: { OR: [{ active: true }, { slug: UNDEFINED_WORK_SLUG }] },
+    });
 
     let conversion;
     try {

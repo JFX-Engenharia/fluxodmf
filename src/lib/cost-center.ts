@@ -11,6 +11,17 @@ export type WorkMatcher = {
   costCenterAliases: string;
 };
 
+/**
+ * Conta-sentinela das compras que chegaram sem centro de custo. Nasce INATIVA
+ * de proposito: assim nao vira card no Dashboard nem linha no indicador de
+ * cobertura — uma conta que nunca recebe aporte apareceria com saldo negativo e
+ * distorceria a metrica. A compra continua visivel em Pagamentos, e o rateio e
+ * o caminho de correcao: assim que alguem rateia 100% na obra certa, o valor
+ * migra sozinho, porque o dashboard prefere as alocacoes ao workId.
+ */
+export const UNDEFINED_WORK_SLUG = "indefinido";
+export const UNDEFINED_WORK_NAME = "INDEFINIDO";
+
 /** Compara ignorando acentos, caixa e pontuacao: "Ediser" = "EDISER" = "ediser". */
 export function normalizeName(value: unknown) {
   return String(value ?? "")

@@ -12,7 +12,8 @@
 
 import ExcelJS from "exceljs";
 import { canonicalAccountLabel, matchWork, normalizeName, type WorkMatcher } from "@/lib/cost-center";
-import { buildUniqueKey } from "@/lib/import-parser";
+import { buildUniqueKey, importDayIso } from "@/lib/import-parser";
+import { UNDEFINED_MARKER, type MissingField } from "@/lib/missing-info";
 import { brDate, findColumn, isoDate, parseDate, parseMoney, readRawGrid } from "@/lib/spreadsheet";
 
 /** Colunas do export bruto. O primeiro alias e o nome que o Conta Azul usa. */
@@ -46,7 +47,7 @@ const MONEY_FORMAT = '_-"R$" * #,##0.00_-;-"R$" * #,##0.00_-;_-"R$" * "-"??_-;_-
 export type ConvertedRow = {
   rowNumber: number;
   supplierName: string;
-  /** ISO (aaaa-mm-dd); vazio quando a data nao foi reconhecida. */
+  /** ISO (aaaa-mm-dd); data da conversao quando a planilha nao trouxe data. */
   dueDate: string;
   description: string;
   amount: number;
@@ -55,7 +56,10 @@ export type ConvertedRow = {
   /** Conta do resumo: o nome cadastrado quando reconhecida, senao o proprio rotulo. */
   accountLabel: string;
   isNewWork: boolean;
+  /** SO o que impede virar compra: fornecedor, valor e duplicidade. */
   errors: string[];
+  /** Campos que a planilha omitiu; espelha o parser, campo a campo. */
+  undefinedFields: MissingField[];
 };
 
 export type ConvertedAccount = {
@@ -117,30 +121,42 @@ export async function convertRawFile(
     .map(([label]) => label);
 
   const seen = new Set<string>();
+  // Mesma regra do parser, e pelo mesmo motivo: uma vez por arquivo, para o
+  // lote inteiro receber o mesmo dia.
+  const importDay = importDayIso();
 
   const rows: ConvertedRow[] = grid.rows.map(({ raw, rowNumber }) => {
     const errors: string[] = [];
+    const undefinedFields: MissingField[] = [];
     const supplierName = String(raw[columns.supplierName ?? ""] ?? "").trim();
     const description = String(raw[columns.description ?? ""] ?? "").trim();
     const costCenter = String(raw[columns.costCenter ?? ""] ?? "").trim();
     const category = String(raw[columns.category ?? ""] ?? "").trim();
     const parsed = parseMoney(raw[columns.amount ?? ""]);
     const dueDate = parseDate(raw[columns.dueDate ?? ""]);
-    const work = matchWork(costCenter, works);
 
     // Arredonda uma vez, aqui: a celula da planilha, o resumo por conta e o
     // total tem que sair do mesmo numero, senao o resumo diverge da soma das
     // celulas ao lado dele.
     const amount = Number.isNaN(parsed) ? NaN : Number(parsed.toFixed(2));
-    const currentDueDate = dueDate ? isoDate(dueDate) : "";
 
+    // Converter e importar tem que recusar exatamente as mesmas linhas — e o
+    // contrato declarado no topo deste arquivo. Se so o parser afrouxasse, o
+    // conversor viraria o novo ponto onde a compra some.
     if (!supplierName) errors.push("Fornecedor obrigatorio");
-    if (!description) errors.push("Descricao obrigatoria");
     // O importador recusa valor <= 0, entao converter uma linha assim so
     // empurraria o erro para a etapa seguinte.
     if (Number.isNaN(amount) || amount <= 0) errors.push("Valor invalido");
-    if (!dueDate) errors.push("Data invalida");
-    if (!costCenter) errors.push("Centro de custo obrigatorio");
+
+    if (!description) undefinedFields.push("description");
+    if (!costCenter) undefinedFields.push("costCenter");
+    if (!category) undefinedFields.push("category");
+    if (!dueDate) undefinedFields.push("currentDueDate");
+
+    const filledDescription = description || UNDEFINED_MARKER;
+    const filledCostCenter = costCenter || UNDEFINED_MARKER;
+    const currentDueDate = dueDate ? isoDate(dueDate) : importDay;
+    const work = matchWork(filledCostCenter, works);
 
     /**
      * Mesma regra de duplicata da importacao, e pela mesma chave. O export
@@ -148,14 +164,23 @@ export async function convertRawFile(
      * importador recusa a segunda; sem recusar aqui tambem, o arquivo gerado
      * sairia com uma linha que a importacao descarta e um resumo somando essa
      * linha — o sistema acusaria divergencia num arquivo que ele mesmo gerou.
+     *
+     * O sal das incompletas segue a MESMA formula do parser (arquivo + linha).
+     * O hash absoluto difere entre as duas pontas, porque o nome do arquivo
+     * muda do bruto para o gerado — o que precisa coincidir e a DECISAO: duas
+     * incompletas parecidas tem linhas distintas nos dois arquivos, entao as
+     * duas sobrevivem aqui e as duas sobrevivem la.
      */
     if (errors.length === 0) {
       const key = buildUniqueKey({
         supplierName,
-        description,
+        description: filledDescription,
         amount,
         currentDueDate,
-        costCenter,
+        costCenter: filledCostCenter,
+        incompleteSalt: undefinedFields.length
+          ? `${normalizeName(fileName)}#${rowNumber}`
+          : undefined,
       });
       if (seen.has(key)) errors.push("Duplicado dentro da planilha");
       seen.add(key);
@@ -165,13 +190,16 @@ export async function convertRawFile(
       rowNumber,
       supplierName,
       dueDate: currentDueDate,
-      description,
+      description: filledDescription,
       amount: Number.isNaN(amount) ? 0 : amount,
       category,
-      costCenter,
-      accountLabel: canonicalAccountLabel(work?.name ?? costCenter),
+      costCenter: filledCostCenter,
+      accountLabel: canonicalAccountLabel(work?.name ?? filledCostCenter),
+      // Centro de custo CRU: a sentinela INDEFINIDO ja existe e nunca e
+      // anunciada como conta nova.
       isNewWork: Boolean(costCenter) && !work,
       errors,
+      undefinedFields,
     };
   });
 
@@ -201,11 +229,16 @@ export async function convertRawFile(
     computedAmount: Number(account.computedAmount.toFixed(2)),
   }));
 
-  const flowDate = validRows.reduce<Date | null>((latest, row) => {
-    const date = new Date(`${row.dueDate}T00:00:00.000Z`);
-    if (Number.isNaN(date.getTime())) return latest;
-    return !latest || date > latest ? date : latest;
-  }, null);
+  // So linhas com data REAL entram no nome do arquivo. Se as preenchidas com a
+  // data da conversao contassem, uma planilha de vencimentos antigos com uma
+  // linha sem data sairia batizada com o dia de hoje.
+  const flowDate = validRows
+    .filter((row) => !row.undefinedFields.includes("currentDueDate"))
+    .reduce<Date | null>((latest, row) => {
+      const date = new Date(`${row.dueDate}T00:00:00.000Z`);
+      if (Number.isNaN(date.getTime())) return latest;
+      return !latest || date > latest ? date : latest;
+    }, null);
 
   return {
     fileName,

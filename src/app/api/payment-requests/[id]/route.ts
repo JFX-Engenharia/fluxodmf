@@ -2,7 +2,7 @@ import { PaymentRequestStatus, Role } from "@prisma-generated/enums";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireMutationAllowed, requireUser } from "@/lib/auth";
+import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 const actionSchema = z.object({
@@ -15,7 +15,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const actor = await requireUser();
+    const actor = await requireTab("solicitacoes");
     await requireMutationAllowed(actor);
     const { id } = await context.params;
     const body = actionSchema.parse(await request.json());

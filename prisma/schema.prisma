@@ -17,6 +17,14 @@ enum Role {
   GESTOR
   APROVADOR
   ADMINISTRADOR
+  COLABORADOR
+}
+
+/// ENVIADA e o unico valor que a API escreve hoje. CONFERIDA fica reservada
+/// para a triagem futura no painel: nenhum endpoint grava esse status ainda.
+enum ReceiptNoteStatus {
+  ENVIADA
+  CONFERIDA
 }
 
 enum UserStatus {
@@ -126,6 +134,7 @@ model User {
   sessions      UserSession[]
   devices       Device[]
   loginEvents   LoginEvent[]
+  receiptNotes  ReceiptNote[]     @relation("ReceiptNoteAuthor")
   authProvider  String?
   externalSubject String?
   lastLoginAt   DateTime?
@@ -291,6 +300,11 @@ model Payment {
   currentDueDate    DateTime
   costCenter        String
   category          String          @default("")
+  /// Campos que a planilha de origem omitiu, gravados com marcador. Array JSON
+  /// de codigos (src/lib/missing-info.ts); "[]" significa que nada faltou. E o
+  /// que permite o painel dizer *por que* um pagamento esta INDEFINIDO meses
+  /// depois — a previa da importacao some assim que o lote e confirmado.
+  missingInfo       String          @default("[]")
   uniqueKey         String          @unique
   status            PaymentStatus   @default(PENDENTE)
   workId            String
@@ -494,6 +508,54 @@ model PaymentRequestAttachment {
   createdAt DateTime       @default(now())
 
   @@index([requestId])
+}
+
+/// Foto de nota fiscal enviada pelo colaborador de campo (cartao CAJU) pelo
+/// PWA em /notas.
+///
+/// Sem cascade no autor de proposito: a nota e documento de auditoria e nao
+/// pode sumir junto com a conta. A exclusao de usuario reatribui as notas ao
+/// sentinel "usuario-removido", como ja acontece com o historico financeiro.
+///
+/// CRESCIMENTO: cada foto comprimida ocupa ~200-500 KB, o que da ordem de
+/// 750 MB por mes em uso pleno (20 colaboradores x 5 notas por dia), e os
+/// backups crescem junto. O `data` fica em TOAST, entao listagens que NAO
+/// selecionam esse campo nao pagam por ele — e nenhuma consulta fora de
+/// /api/notas/[id]/foto pode seleciona-lo. Se o volume apertar, a saida e
+/// mover os bytes para object storage preservando a URL /api/notas/[id]/foto,
+/// que e o unico endereco que o cliente conhece.
+model ReceiptNote {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation("ReceiptNoteAuthor", fields: [userId], references: [id])
+  /// UUID que o PWA gerou na captura, o mesmo valor que chega no cabecalho
+  /// Idempotency-Key. E o que liga a foto da fila offline a esta linha: sem ele
+  /// o cliente nao consegue casar o que enviou com o que a listagem devolve, e a
+  /// mesma nota aparece duas vezes na tela do colaborador.
+  ///
+  /// NAO e a chave primaria de proposito: quem escolhe o id da linha e o
+  /// servidor (cuid), nao o cliente. Nulo nas notas gravadas antes desta coluna
+  /// existir — para o cliente, nulo significa "sem par local".
+  ///
+  /// UNIQUE e a segunda linha de defesa contra duplicata: a chave de
+  /// idempotencia expira em 24h e a fila offline pode durar mais que isso, entao
+  /// o banco ainda barra a segunda gravacao da mesma foto quando a primeira
+  /// barreira ja caducou.
+  clientKey   String?           @unique
+  description String            @default("")
+  fileName    String
+  mimeType    String
+  size        Int
+  data        Bytes
+  /// Relogio do celular no momento da captura: a foto pode ter sido tirada
+  /// offline, horas antes de o envio chegar ao servidor.
+  capturedAt  DateTime
+  status      ReceiptNoteStatus @default(ENVIADA)
+  /// Recebimento no servidor. Junto com capturedAt mostra o atraso do envio.
+  createdAt   DateTime          @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model PaymentAction {

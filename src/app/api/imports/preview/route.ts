@@ -4,6 +4,7 @@ import { assertBodySize, MEGABYTE } from "@/lib/body-size";
 import { prisma } from "@/lib/db";
 import { assertSpreadsheetContent } from "@/lib/file-signature";
 import { parsePaymentFile } from "@/lib/import-parser";
+import { UNDEFINED_WORK_SLUG } from "@/lib/cost-center";
 
 const MAX_BODY_SIZE = 25 * MEGABYTE;
 const MAX_FILE_SIZE = 10 * MEGABYTE;
@@ -32,7 +33,9 @@ export async function POST(request: Request) {
     const data = await file.arrayBuffer();
     assertSpreadsheetContent(new Uint8Array(data), file.name);
 
-    const works = await prisma.work.findMany({ where: { active: true } });
+    const works = await prisma.work.findMany({
+      where: { OR: [{ active: true }, { slug: UNDEFINED_WORK_SLUG }] },
+    });
     const preview = await parsePaymentFile(file.name, data, works);
 
     // Duplicidade contra o que ja esta no banco: a planilha do dia seguinte
@@ -62,6 +65,9 @@ export async function POST(request: Request) {
       ...preview,
       rows,
       validRows: validRows.length,
+      incompleteRows: rows.filter(
+        (row) => row.errors.length === 0 && row.undefinedFields.length > 0,
+      ).length,
       invalidRows: rows.filter((row) => row.errors.length > 0).length,
       duplicateRows: rows.filter((row) => row.duplicate).length,
       totalAmount: Number(validRows.reduce((sum, row) => sum + row.amount, 0).toFixed(2)),

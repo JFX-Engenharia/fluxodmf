@@ -1,8 +1,9 @@
+import { z } from "zod";
 import { ImportStatus } from "@prisma-generated/enums";
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { confirmSchema, processImportTask } from "@/lib/import-worker";
+import { confirmSchema, importableRowSchema, processImportTask } from "@/lib/import-worker";
 import { withIdempotency } from "@/lib/idempotency";
 
 function defaultFlowName() {
@@ -25,18 +26,28 @@ export async function POST(request: Request) {
       scope: "imports:confirm",
       actorId: user.id,
       execute: async () => {
+        // A ordem aqui e o conserto: primeiro o schema tolerante, que aceita a
+        // planilha inteira como a previa mostrou; depois o filtro; e so entao a
+        // validacao estrita, sobre o que de fato vai virar compra. Validar tudo
+        // antes de filtrar fazia uma unica linha sem fornecedor derrubar o lote
+        // inteiro com 400, contradizendo o botao que prometia importar todas.
         const body = confirmSchema.parse(await request.json());
         const flowName = body.importName || defaultFlowName();
-        const validRows = body.rows.filter(
+        const importable = body.rows.filter(
           (row) => row.errors.length === 0 && !row.duplicate,
         );
         const validContributions = body.contributions.filter(
           (row) => row.errors.length === 0,
         );
 
-        if (validRows.length === 0) {
-          throw new ApiError(400, "Não há linhas válidas para importar.");
+        if (importable.length === 0) {
+          throw new ApiError(
+            400,
+            "Nenhuma linha pôde ser importada: todas estão sem fornecedor ou sem valor.",
+          );
         }
+
+        const validRows = z.array(importableRowSchema).parse(importable);
 
         const alreadyImported = await prisma.payment.findMany({
           where: { uniqueKey: { in: validRows.map((row) => row.uniqueKey) } },

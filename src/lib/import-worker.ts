@@ -8,23 +8,60 @@ import {
 } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError } from "@/lib/api";
-import { matchWork, normalizeName, uniqueSlug } from "@/lib/cost-center";
+import {
+  matchWork,
+  normalizeName,
+  UNDEFINED_WORK_NAME,
+  UNDEFINED_WORK_SLUG,
+  uniqueSlug,
+} from "@/lib/cost-center";
 import { prisma } from "@/lib/db";
 import { allocationRows, chooseAllocationRule } from "@/lib/finance-management";
+import { MISSING_FIELDS, serializeMissingInfo } from "@/lib/missing-info";
 
-const rowSchema = z.object({
+/**
+ * Forma de FIO: exatamente o que a previa mostrou, inclusive as linhas
+ * bloqueadas. O cliente manda a planilha inteira de proposito — o servidor
+ * precisa de todas as linhas para calcular invalidRows, e filtrar no cliente
+ * seria validacao no lugar errado.
+ *
+ * Exigir aqui o `min(1)` de fornecedor era o que derrubava a importacao
+ * inteira: uma unica linha incompleta virava ZodError, 400, e nenhuma das
+ * outras 99 entrava — enquanto o botao prometia "Importar 100 linha(s)".
+ *
+ * `undefinedFields` com z.enum fecha a porta para payload adulterado gravar
+ * codigo invalido na coluna missingInfo.
+ */
+const wireRowSchema = z.object({
   externalReference: z.string().optional(),
+  supplierName: z.string(),
+  description: z.string(),
+  amount: z.number(),
+  category: z.string().default(""),
+  originalDueDate: z.string(),
+  currentDueDate: z.string(),
+  costCenter: z.string(),
+  workId: z.string().optional(),
+  uniqueKey: z.string(),
+  errors: z.array(z.string()),
+  undefinedFields: z.array(z.enum(MISSING_FIELDS)).default([]),
+  duplicate: z.boolean(),
+});
+
+/**
+ * Forma IMPORTAVEL: o rigor de antes, aplicado depois do filtro. O que chega ao
+ * payload do lote ja passou por aqui, entao uma linha bloqueada que vazasse ate
+ * este ponto faz o lote falhar visivelmente (FALHOU) em vez de gravar uma
+ * compra com fornecedor vazio.
+ */
+export const importableRowSchema = wireRowSchema.extend({
   supplierName: z.string().min(1),
   description: z.string().min(1),
   amount: z.number().positive(),
-  category: z.string().default(""),
   originalDueDate: z.string().min(1),
   currentDueDate: z.string().min(1),
   costCenter: z.string().min(1),
-  workId: z.string().optional(),
   uniqueKey: z.string().min(1),
-  errors: z.array(z.string()),
-  duplicate: z.boolean(),
 });
 
 const contributionSchema = z.object({
@@ -38,23 +75,51 @@ export const confirmSchema = z.object({
   fileName: z.string().min(1),
   importName: z.string().trim().max(120).optional(),
   totalRows: z.number().int().nonnegative(),
-  rows: z.array(rowSchema),
+  rows: z.array(wireRowSchema),
   contributions: z.array(contributionSchema).default([]),
 });
 
 export type ConfirmImport = z.infer<typeof confirmSchema>;
-type ImportTaskPayload = Pick<ConfirmImport, "rows" | "contributions">;
 
 const taskPayloadSchema = z.object({
-  rows: z.array(rowSchema),
+  rows: z.array(importableRowSchema),
   contributions: z.array(contributionSchema),
 });
+
+type ImportTaskPayload = z.infer<typeof taskPayloadSchema>;
 
 const CHUNK_SIZE = 100;
 const STALE_AFTER_MS = 15 * 60_000;
 
 function dateFromIsoDay(day: string) {
   return new Date(`${day}T00:00:00.000Z`);
+}
+
+/**
+ * Garante a conta-sentinela das compras sem centro de custo. Ela nasce na
+ * migration, mas isso nao basta: admin/system restaura backup depois de um
+ * `work.deleteMany()`, e um backup anterior a esta mudanca nao a traz de volta.
+ *
+ * `update: {}` NUNCA reativa: se o administrador ativou a conta, e escolha dele
+ * e o importador nao desfaz. Chamada antes de ler as contas existentes, senao
+ * resolveWorkId nao a encontraria e criaria uma segunda conta INDEFINIDO, essa
+ * ativa, que viraria card no dashboard.
+ */
+export async function ensureUndefinedWork() {
+  return prisma.work.upsert({
+    where: { slug: UNDEFINED_WORK_SLUG },
+    update: {},
+    create: {
+      name: UNDEFINED_WORK_NAME,
+      slug: UNDEFINED_WORK_SLUG,
+      active: false,
+      costCenterAliases: JSON.stringify([
+        UNDEFINED_WORK_NAME,
+        "SEM CENTRO DE CUSTO",
+        "NAO INFORMADO",
+      ]),
+    },
+  });
 }
 
 export async function processImportTask(batchId: string): Promise<void> {
@@ -106,6 +171,9 @@ export async function processImportTask(batchId: string): Promise<void> {
       },
     });
     const payload: ImportTaskPayload = taskPayloadSchema.parse(JSON.parse(batch.payload));
+    // Antes do findMany, sempre: as linhas sem centro de custo chegam com o
+    // centro "INDEFINIDO" e precisam encontrar a sentinela ja na lista.
+    await ensureUndefinedWork();
     const existingWorks = await prisma.work.findMany();
     const allocationRules = await prisma.allocationRule.findMany({
       where: { active: true },
@@ -188,6 +256,10 @@ export async function processImportTask(batchId: string): Promise<void> {
             originalDueDate: dateFromIsoDay(row.originalDueDate),
             currentDueDate: dateFromIsoDay(row.currentDueDate),
             costCenter: row.costCenter,
+            // O que a planilha omitiu viaja junto com a compra: e o que permite
+            // o painel explicar, depois de importar, o mesmo que a previa
+            // explicou antes.
+            missingInfo: serializeMissingInfo(row.undefinedFields),
             uniqueKey: row.uniqueKey,
             workId: resolvedWorkId(row.costCenter),
             importBatchId: batch.id,

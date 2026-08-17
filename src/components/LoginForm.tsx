@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
 
 type LoginResponse = {
-  user?: { id: string };
+  user?: { id: string; role?: string };
   error?: string;
 };
 
@@ -93,8 +93,7 @@ export function LoginForm({ corporateStatus }: LoginFormProps) {
         return;
       }
 
-      // Todos os perfis caem no mesmo painel; as abas e que variam por perfil.
-      router.replace("/painel");
+      router.replace(data.user.role === "COLABORADOR" ? "/notas" : "/painel");
     } catch {
       setError("Falha de conexão. Tente novamente.");
     } finally {

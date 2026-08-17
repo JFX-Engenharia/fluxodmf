@@ -3,8 +3,10 @@ import {
   canonicalAccountLabel,
   matchWork,
   normalizeName as normalize,
+  UNDEFINED_WORK_NAME,
   type WorkMatcher,
 } from "@/lib/cost-center";
+import { UNDEFINED_MARKER, type MissingField } from "@/lib/missing-info";
 import {
   cellValue,
   findColumn,
@@ -56,19 +58,50 @@ export function buildUniqueKey(input: {
   amount: number;
   currentDueDate: string;
   costCenter: string;
+  /**
+   * So para linhas incompletas: "<arquivo>#<linha>".
+   *
+   * Uma linha incompleta NAO TEM identidade — foi justamente a identidade que a
+   * planilha omitiu. Sem o sal, duas compras do mesmo fornecedor e valor, ambas
+   * sem descricao, sem data e sem centro de custo, gerariam a mesma chave e a
+   * segunda seria descartada como duplicata. Deduplicar ai e adivinhar, e o
+   * custo do erro e silencioso: a compra some, que e exatamente o bug que esta
+   * mudanca conserta. Duplicar e visivel e o operador resolve.
+   *
+   * Como o sal e o arquivo mais a linha, o MESMO arquivo reenviado (retry, F5)
+   * continua produzindo as mesmas chaves e o worker segue reentrante. Risco
+   * residual assumido: o mesmo conteudo com outro nome de arquivo
+   * ("FLUXO (1).xlsx") duplica as incompletas — visivel na previa.
+   *
+   * Ausente nas linhas completas, e por isso toda chave ja gravada continua
+   * valendo: o hash delas nao muda.
+   */
+  incompleteSalt?: string;
 }) {
-  return crypto
-    .createHash("sha256")
-    .update(
-      [
-        normalize(input.supplierName),
-        normalize(input.description),
-        input.amount.toFixed(2),
-        input.currentDueDate,
-        normalize(input.costCenter),
-      ].join("|"),
-    )
-    .digest("hex");
+  const parts = [
+    normalize(input.supplierName),
+    normalize(input.description),
+    input.amount.toFixed(2),
+    input.currentDueDate,
+    normalize(input.costCenter),
+  ];
+
+  if (input.incompleteSalt) parts.push("INCOMPLETO", input.incompleteSalt);
+
+  return crypto.createHash("sha256").update(parts.join("|")).digest("hex");
+}
+
+/**
+ * Dia da importacao (ISO) no fuso de Sao Paulo, que e o que o operador ve no
+ * relogio. Vale como vencimento das compras que chegaram sem data.
+ *
+ * Exportado porque o conversor precisa do MESMO dia: as duas pontas preenchem o
+ * mesmo buraco e nao podem divergir. Chamado UMA vez por arquivo, nunca por
+ * linha — numa planilha grande processada na virada do dia, linhas do mesmo
+ * lote ficariam com datas diferentes.
+ */
+export function importDayIso() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 }
 
 type SheetGrid = {
@@ -79,20 +112,32 @@ type SheetGrid = {
   trailing: Array<{ cells: string[]; rowNumber: number }>;
 };
 
+type PaymentColumnIndexes = {
+  supplier: number;
+  amount: number;
+  description: number;
+  costCenter: number;
+};
+
 /**
  * A planilha nao termina na ultima linha de pagamento: abaixo dela vem um
  * SUBTOTAL, um resumo por conta e o bloco APORTES. Tratar isso como pagamento
  * gera linhas invalidas, entao a leitura para no primeiro marcador de fim.
+ *
+ * "Duro" e a palavra que importa: so entra aqui o que de fato ENCERRA a tabela.
+ * Linha em branco NAO entra — ela e um respiro no meio da planilha e antes
+ * derrubava tudo abaixo dela em silencio.
  */
-function isEndOfPayments(cells: string[], columnIndexes: { supplier: number; amount: number }) {
+function isHardEndOfPayments(cells: string[], columnIndexes: PaymentColumnIndexes) {
   const supplier = normalize(cells[columnIndexes.supplier] ?? "");
-  const nonEmpty = cells.filter((cell) => String(cell ?? "").trim());
+  const description = normalize(cells[columnIndexes.description] ?? "");
+  const costCenter = normalize(cells[columnIndexes.costCenter] ?? "");
+  const amountCell = String(cells[columnIndexes.amount] ?? "").trim();
+  const hasAmount = Boolean(amountCell) && !Number.isNaN(parseMoney(amountCell));
 
-  // Linha totalmente vazia separando blocos.
-  if (nonEmpty.length === 0) return true;
-
-  // Linha de SUBTOTAL: sem fornecedor, mas com valor.
-  if (!supplier && nonEmpty.length <= 2) return true;
+  // Rotulos escritos: TOTAL, SUBTOTAL, APORTES.
+  if (totalLabels.includes(supplier)) return true;
+  if (contributionSectionLabels.includes(supplier)) return true;
 
   // Cabecalho do resumo por conta (CONTA | VALOR | STATUS).
   const normalizedCells = cells.map(normalize).filter(Boolean);
@@ -101,8 +146,12 @@ function isEndOfPayments(cells: string[], columnIndexes: { supplier: number; amo
     normalizedCells.every((cell) => summaryHeaderLabels.includes(cell));
   if (looksLikeSummaryHeader) return true;
 
-  if (contributionSectionLabels.includes(supplier)) return true;
-  if (totalLabels.includes(supplier)) return true;
+  // SUBTOTAL do modelo que o proprio conversor gera (flow-converter.ts:296):
+  // escreve so a celula de valor, com formula e sem texto nenhum, entao nenhum
+  // rotulo casa com ele. Uma compra real tem ao menos fornecedor, descricao ou
+  // centro de custo — e depois desta mudanca a que nao tem nada disso, mas tem
+  // valor, continua sendo fim de tabela e nao compra incompleta.
+  if (hasAmount && !supplier && !description && !costCenter) return true;
 
   return false;
 }
@@ -123,11 +172,19 @@ async function parseWorkbook(arrayBuffer: ArrayBuffer): Promise<SheetGrid> {
       String(cellValue(worksheet.getRow(rowNumber).getCell(index + 1).value) ?? "").trim(),
     );
 
+  // Posicoes do modelo refinado (FORNECEDOR | DATA | DESCRICAO | VALOR |
+  // CATEGORIA | CENTRO DE CUSTO) como fallback, no mesmo espirito defensivo que
+  // ja valia para fornecedor e valor: sem o cabecalho reconhecido, e melhor
+  // olhar a coluna provavel do que tratar toda linha como fim de tabela.
   const supplierHeader = findColumn(headers, requiredColumns.supplierName);
   const amountHeader = findColumn(headers, requiredColumns.amount);
-  const columnIndexes = {
+  const descriptionHeader = findColumn(headers, requiredColumns.description);
+  const costCenterHeader = findColumn(headers, requiredColumns.costCenter);
+  const columnIndexes: PaymentColumnIndexes = {
     supplier: supplierHeader ? headers.indexOf(supplierHeader) : 0,
     amount: amountHeader ? headers.indexOf(amountHeader) : 3,
+    description: descriptionHeader ? headers.indexOf(descriptionHeader) : 2,
+    costCenter: costCenterHeader ? headers.indexOf(costCenterHeader) : 5,
   };
 
   const paymentRows: SheetGrid["paymentRows"] = [];
@@ -137,7 +194,14 @@ async function parseWorkbook(arrayBuffer: ArrayBuffer): Promise<SheetGrid> {
   for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber++) {
     const cells = readCells(rowNumber);
 
-    if (inPayments && isEndOfPayments(cells, columnIndexes)) {
+    // Linha em branco e pulada, nao encerra nada. Encerrar aqui era o que
+    // apagava, sem aviso, tudo que viesse depois de um respiro no meio da
+    // planilha: as compras nao viravam linha invalida nem entravam em
+    // totalRows, simplesmente deixavam de existir. O bloco de resumo continua
+    // sendo achado pelos marcadores duros, que e o que de fato o delimita.
+    if (cells.every((cell) => !String(cell ?? "").trim())) continue;
+
+    if (inPayments && isHardEndOfPayments(cells, columnIndexes)) {
       inPayments = false;
     }
 
@@ -330,30 +394,54 @@ export async function parsePaymentFile(
     .map(([label]) => label);
 
   const seen = new Set<string>();
+  // Uma vez por arquivo: a data de importacao tem que ser a mesma para todas as
+  // linhas que chegaram sem data, e a previa precisa mostrar exatamente o dia
+  // que sera gravado na confirmacao.
+  const importDay = importDayIso();
 
   const rows: PaymentImportRow[] = grid.paymentRows.map(({ raw, rowNumber }) => {
     const errors: string[] = [];
+    const undefinedFields: MissingField[] = [];
     const supplierName = String(raw[columns.supplierName ?? ""] ?? "").trim();
     const description = String(raw[columns.description ?? ""] ?? "").trim();
     const costCenter = String(raw[columns.costCenter ?? ""] ?? "").trim();
     const category = String(raw[columns.category ?? ""] ?? "").trim();
     const amount = parseMoney(raw[columns.amount ?? ""]);
     const dueDate = parseDate(raw[columns.dueDate ?? ""]);
-    const work = matchWork(costCenter, works);
 
+    // So valor e fornecedor bloqueiam: sem eles nao ha compra identificavel.
     if (!supplierName) errors.push("Fornecedor obrigatorio");
-    if (!description) errors.push("Descricao obrigatoria");
     if (Number.isNaN(amount) || amount <= 0) errors.push("Valor invalido");
-    if (!dueDate) errors.push("Data invalida");
-    // Centro de custo desconhecido nao e erro: a conta e criada pelo nome na
-    // confirmacao. So a ausencia do nome invalida a linha.
-    if (!costCenter) errors.push("Centro de custo obrigatorio");
 
-    const currentDueDate = dueDate ? isoDate(dueDate) : "";
-    const key =
-      supplierName && description && amount && currentDueDate && costCenter
-        ? buildUniqueKey({ supplierName, description, amount, currentDueDate, costCenter })
-        : `invalid-${rowNumber}`;
+    // O resto entra marcado. Eram estes quatro campos que faziam a compra sumir
+    // sem aviso, sendo que pagamento sem centro de custo e rotina aqui.
+    if (!description) undefinedFields.push("description");
+    if (!costCenter) undefinedFields.push("costCenter");
+    if (!category) undefinedFields.push("category");
+    if (!dueDate) undefinedFields.push("currentDueDate");
+
+    // Os placeholders sao resolvidos AQUI, e nao no worker: a previa tem que
+    // mostrar o valor exato que sera gravado, e a chave unica depende dele.
+    // `category` fica sem marcador de proposito — ela ja era opcional e gravar
+    // INDEFINIDO criaria um balde novo ao lado do historico do dashboard.
+    const filledDescription = description || UNDEFINED_MARKER;
+    const filledCostCenter = costCenter || UNDEFINED_MARKER;
+    const currentDueDate = dueDate ? isoDate(dueDate) : importDay;
+    const work = matchWork(filledCostCenter, works);
+
+    const blocked = errors.length > 0;
+    const key = blocked
+      ? `invalid-${rowNumber}`
+      : buildUniqueKey({
+          supplierName,
+          description: filledDescription,
+          amount,
+          currentDueDate,
+          costCenter: filledCostCenter,
+          incompleteSalt: undefinedFields.length
+            ? `${normalize(fileName)}#${rowNumber}`
+            : undefined,
+        });
 
     const duplicate = seen.has(key);
     seen.add(key);
@@ -364,18 +452,23 @@ export async function parsePaymentFile(
       rowNumber,
       externalReference: String(raw[columns.externalReference ?? ""] ?? "").trim() || undefined,
       supplierName,
-      description,
+      description: filledDescription,
       amount: Number.isNaN(amount) ? 0 : amount,
       category,
+      // Igual ao vencimento atual, senao o painel mostra "Original:" numa compra
+      // que nunca foi remarcada.
       originalDueDate: currentDueDate,
       currentDueDate,
-      costCenter,
+      costCenter: filledCostCenter,
       workId: work?.id,
       // Sem conta correspondente, o proprio nome da planilha vira a conta.
-      workName: work?.name ?? costCenter,
+      workName: work?.name ?? filledCostCenter,
+      // Compara com o centro de custo CRU: linha sem centro nenhum nunca promete
+      // criar conta — ela cai na sentinela INDEFINIDO, que ja existe.
       isNewWork: Boolean(costCenter) && !work,
       uniqueKey: key,
       errors,
+      undefinedFields,
       duplicate,
     };
   });
@@ -392,12 +485,18 @@ export async function parsePaymentFile(
    */
   const newAccounts: string[] = [];
   const seenAccounts = new Set<string>();
+  const sentinelKey = normalize(UNDEFINED_WORK_NAME);
 
   for (const row of [...validRows, ...contributions]) {
     if (!row.isNewWork) continue;
     const label = "costCenter" in row ? row.costCenter : row.accountLabel;
     const key = normalize(label);
     if (!key || seenAccounts.has(key)) continue;
+    // A sentinela nunca e "conta nova": ela ja existe (criada na migration e
+    // garantida em runtime). Sem esta guarda, o alerta da previa prometeria
+    // criar a conta INDEFINIDO toda vez que a rota de origem consultasse so as
+    // contas ativas e nao a enxergasse.
+    if (key === sentinelKey) continue;
     seenAccounts.add(key);
     newAccounts.push(label);
   }
@@ -409,6 +508,8 @@ export async function parsePaymentFile(
     totalRows: rows.length,
     validRows: validRows.length,
     invalidRows: rows.filter((row) => row.errors.length > 0).length,
+    // Subconjunto de validRows: elas SAO importaveis, so entram sinalizadas.
+    incompleteRows: validRows.filter((row) => row.undefinedFields.length > 0).length,
     duplicateRows: rows.filter((row) => row.duplicate).length,
     totalAmount: Number(validRows.reduce((sum, row) => sum + row.amount, 0).toFixed(2)),
     rows,

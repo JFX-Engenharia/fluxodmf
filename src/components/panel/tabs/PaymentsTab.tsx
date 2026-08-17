@@ -21,6 +21,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { usePanel } from "@/components/panel/PanelContext";
 import { useFetchData } from "@/components/panel/useFetchData";
 import { dateTime, money, shortDate, statusLabels } from "@/lib/format";
+import { missingInfoLabels, missingInfoSentence, parseMissingInfo } from "@/lib/missing-info";
 import { canAdminister, Role } from "@/lib/permissions";
 
 type StatusKey = keyof typeof statusLabels;
@@ -34,6 +35,7 @@ type Payment = {
   originalDueDate: string;
   currentDueDate: string;
   costCenter: string;
+  missingInfo: string;
   status: StatusKey;
   work: { id: string; name: string };
   hasReceipt: boolean;
@@ -214,6 +216,7 @@ export function PaymentsTab() {
   // A selecao e derivada, nao sincronizada por efeito: se o item escolhido sai
   // da lista (mudou o filtro, mudou o status), cai no primeiro sozinho.
   const selected = payments.find((payment) => payment.id === selectedId) ?? payments[0] ?? null;
+  const selectedMissingFields = selected ? parseMissingInfo(selected.missingInfo) : [];
 
   /**
    * O lote so considera o que esta na lista atual. Trocar o filtro ou aprovar
@@ -662,28 +665,40 @@ export function PaymentsTab() {
             {!loading && payments.length === 0 ? (
               <div className="empty">Nenhum pagamento encontrado com esse filtro.</div>
             ) : null}
-            {payments.map((payment) => (
-              <button
-                key={payment.id}
-                type="button"
-                className={`payment-row ${batch.includes(payment.id) ? "active" : ""}`}
-                onClick={() => toggleBatch(payment.id)}
-                aria-pressed={batch.includes(payment.id)}
-              >
-                <div>
-                  <strong>{payment.supplierName}</strong>
-                  <small>{payment.description}</small>
-                  <br />
-                  <small className="muted">
-                    {payment.work.name} · {shortDate(payment.currentDueDate)}
-                  </small>
-                </div>
-                <div style={{ textAlign: "right", display: "grid", gap: 6 }}>
-                  <Money value={payment.amount} />
-                  <StatusBadge status={payment.status} />
-                </div>
-              </button>
-            ))}
+            {payments.map((payment) => {
+              const missingFields = parseMissingInfo(payment.missingInfo);
+
+              return (
+                <button
+                  key={payment.id}
+                  type="button"
+                  className={`payment-row ${batch.includes(payment.id) ? "active" : ""}`}
+                  onClick={() => toggleBatch(payment.id)}
+                  aria-pressed={batch.includes(payment.id)}
+                >
+                  <div>
+                    <strong>{payment.supplierName}</strong>
+                    <small>{payment.description}</small>
+                    {missingFields.length > 0 ? (
+                      <span
+                        className="status TRANSFERIDO"
+                        title={missingInfoSentence(missingFields)}
+                      >
+                        informação faltante
+                      </span>
+                    ) : null}
+                    <br />
+                    <small className="muted">
+                      {payment.work.name} · {shortDate(payment.currentDueDate)}
+                    </small>
+                  </div>
+                  <div style={{ textAlign: "right", display: "grid", gap: 6 }}>
+                    <Money value={payment.amount} />
+                    <StatusBadge status={payment.status} />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -703,21 +718,41 @@ export function PaymentsTab() {
                   </div>
                   <div className="detail-item">
                     <span>Descrição</span>
-                    <strong>{selected.description}</strong>
+                    <div>
+                      <strong>{selected.description}</strong>{" "}
+                      {selectedMissingFields.includes("description") ? (
+                        <small className="muted">não veio na planilha</small>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="detail-item">
                     <span>Categoria</span>
-                    <strong>{selected.category || "-"}</strong>
+                    <div>
+                      <strong>{selected.category || "-"}</strong>{" "}
+                      {selectedMissingFields.includes("category") ? (
+                        <small className="muted">não veio na planilha</small>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="detail-item">
                     <span>Conta / centro de custo</span>
-                    <strong>
-                      {selected.work.name} ({selected.costCenter})
-                    </strong>
+                    <div>
+                      <strong>
+                        {selected.work.name} ({selected.costCenter})
+                      </strong>{" "}
+                      {selectedMissingFields.includes("costCenter") ? (
+                        <small className="muted">não veio na planilha</small>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="detail-item">
                     <span>Vencimento</span>
-                    <strong>{shortDate(selected.currentDueDate)}</strong>
+                    <div>
+                      <strong>{shortDate(selected.currentDueDate)}</strong>{" "}
+                      {selectedMissingFields.includes("currentDueDate") ? (
+                        <small className="muted">não veio na planilha</small>
+                      ) : null}
+                    </div>
                     {selected.originalDueDate !== selected.currentDueDate ? (
                       <small className="muted">
                         Original: {shortDate(selected.originalDueDate)}
@@ -730,6 +765,13 @@ export function PaymentsTab() {
                       <Money value={selected.amount} />
                     </strong>
                   </div>
+                  {selectedMissingFields.length > 0 ? (
+                    <div className="detail-item">
+                      <span>Informação faltante</span>
+                      <strong>{missingInfoLabels(selectedMissingFields)}</strong>
+                      <small className="muted">{missingInfoSentence(selectedMissingFields)}</small>
+                    </div>
+                  ) : null}
                   <div className="detail-item">
                     <span>Status</span>
                     <StatusBadge status={selected.status} />

@@ -40,7 +40,10 @@ export async function GET(request: Request) {
           createdAt: { gte: from, lte: to },
           workId: filters.workId,
         },
-        include: { work: true, allocations: { include: { work: true } } },
+        include: {
+          work: { select: { name: true, active: true } },
+          allocations: { include: { work: { select: { name: true, active: true } } } },
+        },
       }),
       prisma.paymentAction.findMany({
         where: {
@@ -71,9 +74,16 @@ export async function GET(request: Request) {
       supplierMap.set(payment.supplierName, supplier);
 
       const allocations = payment.allocations.length
-        ? payment.allocations.map((allocation) => ({ name: allocation.work.name, amount: numberValue(allocation.amount) }))
-        : [{ name: payment.work.name, amount }];
+        ? payment.allocations.map((allocation) => ({
+            name: allocation.work.name,
+            active: allocation.work.active,
+            amount: numberValue(allocation.amount),
+          }))
+        : [{ name: payment.work.name, active: payment.work.active, amount }];
       for (const allocation of allocations) {
+        // Obras inativas saem dos graficos por obra, mas seus valores continuam
+        // nos demais totais do periodo, que sao calculados acima por pagamento.
+        if (!allocation.active) continue;
         const work = workMap.get(allocation.name) ?? { count: 0, amount: 0 };
         work.count += 1;
         work.amount += allocation.amount;

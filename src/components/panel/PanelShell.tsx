@@ -26,6 +26,7 @@ import { FinancialCalendarTab } from "@/components/panel/tabs/FinancialCalendarT
 import { ImportTab } from "@/components/panel/tabs/ImportTab";
 import { PaymentRequestsTab } from "@/components/panel/tabs/PaymentRequestsTab";
 import { LogsTab } from "@/components/panel/tabs/LogsTab";
+import { NotasColaboradoresTab } from "@/components/panel/tabs/NotasColaboradoresTab";
 import { PaymentsTab } from "@/components/panel/tabs/PaymentsTab";
 import { PermissionsTab } from "@/components/panel/tabs/PermissionsTab";
 import { ReconciliationTab } from "@/components/panel/tabs/ReconciliationTab";
@@ -120,6 +121,14 @@ const tabDefinitions: TabDefinition[] = [
     Component: AdvancesTab,
   },
   {
+    id: "notas-colaboradores",
+    label: "Notas dos colaboradores",
+    title: "Notas dos colaboradores",
+    subtitle: "Histórico de notas enviadas pelo cartão CAJU",
+    section: "GESTÃO",
+    Component: NotasColaboradoresTab,
+  },
+  {
     id: "dispositivos",
     label: "Dispositivos",
     title: "Meus dispositivos",
@@ -163,7 +172,13 @@ const primaryNavigationIds: readonly TabId[] = [
   "aprovados",
 ];
 const paymentSecondaryIds: readonly TabId[] = ["adiantamentos"];
-const accountNavigationIds: readonly TabId[] = ["usuarios", "permissoes", "logs", "dispositivos"];
+const accountNavigationIds: readonly TabId[] = [
+  "usuarios",
+  "notas-colaboradores",
+  "permissoes",
+  "logs",
+  "dispositivos",
+];
 
 
 function isTabId(value: string | null): value is TabId {
@@ -250,9 +265,20 @@ export function PanelShell() {
    */
   const activeTab: TabId | null = useMemo(() => {
     if (!tabs.length) return null;
-    if (isTabId(requestedTab) && tabs.includes(requestedTab)) return requestedTab;
-    return tabs[0];
+    if (
+      isTabId(requestedTab) &&
+      tabs.includes(requestedTab) &&
+      tabDefinitions.some((tab) => tab.id === requestedTab)
+    ) return requestedTab;
+    return tabDefinitions.find((tab) => tabs.includes(tab.id))?.id ?? null;
   }, [requestedTab, tabs]);
+  const shouldRedirectToNotas = !activeTab && tabs.includes("notas");
+
+  useEffect(() => {
+    if (!loading && user && shouldRedirectToNotas) {
+      router.replace("/notas");
+    }
+  }, [loading, router, shouldRedirectToNotas, user]);
 
   const goToTab = useCallback(
     (tab: TabId) => {
@@ -295,9 +321,22 @@ export function PanelShell() {
     );
   }
 
-  if (!user || !activeTab) return null;
+  if (!user) return null;
 
-  const current = tabDefinitions.find((tab) => tab.id === activeTab) ?? tabDefinitions[0];
+  if (!activeTab) {
+    return (
+      <div className="login-shell">
+        <div className="panel pad">
+          {shouldRedirectToNotas
+            ? "Redirecionando para suas notas..."
+            : "Sua conta não possui acesso a nenhuma área do painel."}
+        </div>
+      </div>
+    );
+  }
+
+  const current = tabDefinitions.find((tab) => tab.id === activeTab);
+  if (!current) return null;
   const ActiveComponent = current.Component;
 
   return (

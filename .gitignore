@@ -30,6 +30,18 @@ dev.db-wal
 *.pdf
 !samples/*.csv
 
+# Fixtures e scripts temporarios de desenvolvimento: criam contas de teste
+# e nao devem entrar em nenhum commit.
+scripts/tmp-*
+
+# Terminais e papeis dos agentes do Maestri: contexto de sessao, nao do projeto.
+.maestri/
+
+# Instrucoes para agentes de IA. O AGENTS.md e reescrito pelo `next dev` a cada
+# execucao; ignorar os dois mantem a arvore limpa sem versionar ferramental.
+AGENTS.md
+CLAUDE.md
+
 # Sistema operacional / editor
 .DS_Store
 Thumbs.db

@@ -648,6 +648,302 @@ textarea:disabled {
   background: var(--cancel-soft);
 }
 
+/* Notas de campo: tela mobile-first do PWA offline. */
+.notas-shell {
+  width: min(100%, 560px);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg);
+}
+
+.notas-header {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.notas-header h1 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+
+.notas-eyebrow {
+  display: block;
+  color: var(--primary-strong);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.notas-offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 12px 14px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-button);
+  color: var(--text);
+  background: var(--warning-soft);
+  font-weight: 600;
+}
+
+/* O botao e o foco da tela para o colaborador em campo: a faixa absorve todo o
+   espaco livre da coluna (flex: 1) e centraliza o botao nela. Com a fila vazia
+   ele cai no meio da tela; conforme a lista de fotos cresce a faixa encolhe ate
+   o piso, entregando o espaco para a lista em vez de empurra-la para fora. */
+.notas-capture-wrap {
+  flex: 1 1 auto;
+  min-height: 152px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+}
+
+.notas-capture-button {
+  position: relative;
+  width: 100%;
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-card);
+  color: var(--on-accent);
+  background: var(--primary);
+  box-shadow: 0 10px 22px var(--primary-shadow);
+  cursor: pointer;
+  text-align: center;
+}
+
+.notas-capture-button:hover {
+  background: var(--primary-strong);
+}
+
+.notas-capture-button:focus-within {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.notas-capture-icon {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.notas-capture-button strong {
+  font-size: 19px;
+}
+
+.notas-capture-button small {
+  opacity: 0.9;
+}
+
+.notas-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.notas-queue-count {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+  text-align: center;
+}
+
+.notas-confirm {
+  display: grid;
+  gap: 12px;
+}
+
+.notas-confirm h2,
+.notas-list h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.notas-preview {
+  width: 100%;
+  max-height: 52dvh;
+  object-fit: contain;
+  border-radius: var(--radius-button);
+  background: var(--surface-muted);
+}
+
+.notas-preview-grid {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+  list-style: none;
+}
+
+.notas-preview-item {
+  position: relative;
+}
+
+.notas-preview-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--radius-button);
+  background: var(--surface-muted);
+}
+
+.notas-preview-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notas-preview-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notas-confirm-actions .button {
+  flex: 1 1 180px;
+}
+
+.notas-install-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-button);
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.notas-install-hint .button {
+  flex: 0 0 auto;
+}
+
+.notas-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notas-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.nota-card {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.nota-thumb {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.nota-card-body {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.nota-card-body time,
+.nota-card-body p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nota-card-body p {
+  overflow-wrap: anywhere;
+}
+
+.nota-error-text {
+  color: var(--danger) !important;
+}
+
+.nota-card-actions {
+  margin-top: 4px;
+}
+
+.nota-card-actions .button {
+  min-height: 38px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.status.NOTA-PENDENTE {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.status.NOTA-ENVIANDO {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.status.NOTA-ENVIADA {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.status.NOTA-ERRO {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.notas-empty {
+  margin: 0;
+  padding: 20px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-button);
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 420px) {
+  .notas-shell {
+    padding-inline: 12px;
+  }
+
+  .notas-install-hint {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .split-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);

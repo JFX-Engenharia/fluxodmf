@@ -2,12 +2,8 @@ import { Role } from "@prisma-generated/enums";
 import { NextResponse } from "next/server";
 import { ApiError, handleApiError } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { contentDisposition } from "@/lib/content-disposition";
 import { prisma } from "@/lib/db";
-
-function contentDisposition(fileName: string) {
-  const ascii = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "");
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
-}
 
 export async function GET(
   _request: Request,

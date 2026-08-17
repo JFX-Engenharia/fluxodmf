@@ -11,6 +11,9 @@ export function numberValue(value: NumberLike | null | undefined) {
 }
 
 const roleRank: Record<Role, number> = {
+  // Abaixo de zero: o colaborador de campo nao participa de alcada nenhuma,
+  // entao nunca satisfaz uma regra de aprovacao, nem a de menor exigencia.
+  [Role.COLABORADOR]: -1,
   [Role.OPERADOR]: 0,
   [Role.GESTOR]: 1,
   [Role.APROVADOR]: 2,

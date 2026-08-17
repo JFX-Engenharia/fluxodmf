@@ -12,6 +12,7 @@ import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
 import { Money } from "@/components/Money";
 import { money, shortDate } from "@/lib/format";
 import type { FlowConversion } from "@/lib/flow-converter";
+import { missingInfoLabels, missingInfoSentence, UNDEFINED_MARKER } from "@/lib/missing-info";
 import type { ImportPreview } from "@/types";
 
 import { usePanel } from "@/components/panel/PanelContext";
@@ -745,9 +746,14 @@ export function ImportTab() {
               <small>{money(preview.totalAmount)}</small>
             </div>
             <div className="stat">
-              <span>Inválidas</span>
+              <span>Incompletas</span>
+              <strong>{preview.incompleteRows}</strong>
+              <small>entram com INDEFINIDO</small>
+            </div>
+            <div className="stat">
+              <span>Bloqueadas</span>
               <strong>{preview.invalidRows}</strong>
-              <small>fora do lote</small>
+              <small>sem fornecedor ou sem valor</small>
             </div>
             <div className="stat">
               <span>Duplicadas</span>
@@ -823,6 +829,12 @@ export function ImportTab() {
           ) : null}
 
           <section className="section">
+            {preview.incompleteRows > 0 ? (
+              <div className="alert">
+                {preview.incompleteRows} compra(s) com informação faltante aparecem no painel de
+                Pagamentos com a explicação. Use o rateio para colocar cada compra na conta certa.
+              </div>
+            ) : null}
             <div className="section-header">
               <h2>Prévia do fluxo importado</h2>
               <div className="button-row">
@@ -854,36 +866,70 @@ export function ImportTab() {
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.rows.map((row) => (
-                      <tr key={`${row.rowNumber}-${row.uniqueKey}`}>
-                        <td>{row.rowNumber}</td>
-                        <td>{row.supplierName || "-"}</td>
-                        <td>{row.description || "-"}</td>
-                        <td>
-                          <small className="muted">{row.category || "-"}</small>
-                        </td>
-                        <td>
-                          {row.workName ?? row.costCenter ?? "-"}
-                          {row.isNewWork ? (
-                            <>
-                              <br />
-                              <small style={{ color: "var(--info)" }}>conta nova</small>
-                            </>
-                          ) : null}
-                        </td>
-                        <td>{row.currentDueDate ? shortDate(row.currentDueDate) : "-"}</td>
-                        <td>
-                          {row.errors.length === 0 ? (
-                            <span className="status APROVADO">Válida</span>
-                          ) : (
-                            <span className="status REPROVADO">{row.errors.join("; ")}</span>
-                          )}
-                        </td>
-                        <td className="amount">
-                          <Money value={row.amount} />
-                        </td>
-                      </tr>
-                    ))}
+                    {preview.rows.map((row) => {
+                      const accountLabel = row.workName ?? row.costCenter ?? "-";
+                      const isIncomplete = row.undefinedFields.length > 0;
+
+                      return (
+                        <tr key={`${row.rowNumber}-${row.uniqueKey}`}>
+                          <td>{row.rowNumber}</td>
+                          <td>{row.supplierName || "-"}</td>
+                          <td>
+                            {row.description === UNDEFINED_MARKER ? (
+                              <strong>{UNDEFINED_MARKER}</strong>
+                            ) : (
+                              row.description || "-"
+                            )}
+                          </td>
+                          <td>
+                            {row.category === UNDEFINED_MARKER ? (
+                              <strong>{UNDEFINED_MARKER}</strong>
+                            ) : (
+                              <small className="muted">{row.category || "-"}</small>
+                            )}
+                          </td>
+                          <td>
+                            {accountLabel === UNDEFINED_MARKER ? (
+                              <strong>{UNDEFINED_MARKER}</strong>
+                            ) : (
+                              accountLabel
+                            )}
+                            {row.isNewWork ? (
+                              <>
+                                <br />
+                                <small style={{ color: "var(--info)" }}>conta nova</small>
+                              </>
+                            ) : null}
+                          </td>
+                          <td>
+                            {row.currentDueDate ? shortDate(row.currentDueDate) : "-"}
+                            {row.undefinedFields.includes("currentDueDate") ? (
+                              <>
+                                <br />
+                                <small className="muted">data da importação</small>
+                              </>
+                            ) : null}
+                          </td>
+                          <td>
+                            {row.errors.length > 0 ? (
+                              <span className="status REPROVADO">{row.errors.join("; ")}</span>
+                            ) : isIncomplete ? (
+                              <span
+                                className="status TRANSFERIDO"
+                                title={missingInfoSentence(row.undefinedFields)}
+                              >
+                                Faltou: {missingInfoLabels(row.undefinedFields)}
+                              </span>
+                            ) : (
+                              <span className="status APROVADO">Válida</span>
+                            )}
+                          </td>
+                          <td className="amount">
+                            <Money value={row.amount} />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -2,8 +2,8 @@ import { z } from "zod";
 import { Role, UserStatus } from "@prisma-generated/enums";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireTab, requireUser } from "@/lib/auth";
-import { uniqueSlug } from "@/lib/cost-center";
+import { requireTab } from "@/lib/auth";
+import { UNDEFINED_WORK_SLUG, uniqueSlug } from "@/lib/cost-center";
 import { prisma } from "@/lib/db";
 
 const workSchema = z.object({
@@ -56,7 +56,8 @@ async function assertResponsibleUsers(ids: string[]) {
 
 export async function GET() {
   try {
-    await requireUser();
+    // Lista as obras para os formularios de solicitacao do painel.
+    await requireTab("solicitacoes");
     const works = await prisma.work.findMany({
       orderBy: { name: "asc" },
       include: { approvers: { include: { user: { select: { id: true, name: true } } } } },
@@ -114,13 +115,21 @@ export async function PATCH(request: Request) {
     const body = workSchema.extend({ id: z.string() }).parse(await request.json());
     const responsibleUserIds = await assertResponsibleUsers(body.responsibleUserIds);
     const work = await prisma.$transaction(async (tx) => {
+      const existing = await tx.work.findUniqueOrThrow({ where: { id: body.id } });
+      if (
+        existing.slug === UNDEFINED_WORK_SLUG &&
+        !existing.active &&
+        body.active === true
+      ) {
+        throw new ApiError(400, "A conta INDEFINIDO nao pode ser reativada.");
+      }
       await tx.work.update({
         where: { id: body.id },
         data: {
           name: body.name,
           slug: body.slug,
           costCenterAliases: JSON.stringify(body.aliases),
-          active: body.active ?? true,
+          active: body.active ?? existing.active,
         },
       });
       await tx.workApprover.deleteMany({ where: { workId: body.id } });

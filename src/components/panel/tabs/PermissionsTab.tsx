@@ -40,6 +40,8 @@ const tabLabels: Record<(typeof TAB_IDS)[number], string> = {
   usuarios: "Usuários",
   permissoes: "Permissões",
   logs: "Logs",
+  notas: "Envio de notas",
+  "notas-colaboradores": "Notas dos colaboradores",
 };
 
 export function PermissionsTab() {

@@ -321,6 +321,7 @@ export async function DELETE(request: Request) {
       requestApprovals,
       paymentApprovals,
       advances,
+      receiptNotes,
     ] = await Promise.all([
       prisma.payment.count({ where: { createdById: target.id } }),
       prisma.paymentAction.count({ where: { actorId: target.id } }),
@@ -332,6 +333,7 @@ export async function DELETE(request: Request) {
       prisma.paymentRequestApproval.count({ where: { approverId: target.id } }),
       prisma.paymentApproval.count({ where: { actorId: target.id } }),
       prisma.advance.count({ where: { createdById: target.id } }),
+      prisma.receiptNote.count({ where: { userId: target.id } }),
     ]);
 
     if (
@@ -344,7 +346,8 @@ export async function DELETE(request: Request) {
         workApprovals +
         requestApprovals +
         paymentApprovals +
-        advances >
+        advances +
+        receiptNotes >
       0
     ) {
       await prisma.$transaction(async (tx) => {
@@ -375,6 +378,12 @@ export async function DELETE(request: Request) {
         await tx.advance.updateMany({
           where: { createdById: target.id },
           data: { createdById: sentinel.id },
+        });
+        // A nota fiscal e documento de auditoria: a FK nao tem cascade, entao
+        // sem esta reatribuicao o delete falharia por violacao de chave.
+        await tx.receiptNote.updateMany({
+          where: { userId: target.id },
+          data: { userId: sentinel.id },
         });
         await tx.user.delete({ where: { id: target.id } });
       });

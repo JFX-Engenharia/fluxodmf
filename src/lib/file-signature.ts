@@ -19,6 +19,20 @@ const SIGNATURES = [
 /** Tipos que este helper sabe reconhecer pelo conteudo. */
 export const SIGNATURE_MIME_TYPES = SIGNATURES.map((signature) => signature.mimeType);
 
+/** Como cada tipo aparece na mensagem de erro, na lingua do usuario. */
+const MIME_TYPE_LABELS: Record<string, string> = {
+  "application/pdf": "PDF",
+  "image/jpeg": "JPG",
+  "image/png": "PNG",
+};
+
+/** "PDF, JPG ou PNG" — enumeracao em portugues, com "ou" antes do ultimo. */
+function describeMimeTypes(mimeTypes: readonly string[]) {
+  const labels = mimeTypes.map((mimeType) => MIME_TYPE_LABELS[mimeType] ?? mimeType);
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")} ou ${labels[labels.length - 1]}`;
+}
+
 /** Devolve o tipo real do conteudo, ou null quando nao reconhece a assinatura. */
 export function detectFileSignature(bytes: Uint8Array): string | null {
   for (const signature of SIGNATURES) {
@@ -34,16 +48,26 @@ export function detectFileSignature(bytes: Uint8Array): string | null {
  * Confere o conteudo contra o tipo declarado e devolve o tipo DETECTADO, que e
  * o que deve ser persistido. Recusa com 400 tanto o formato desconhecido quanto
  * a divergencia entre conteudo e declaracao.
+ *
+ * `accept` restringe os tipos validos NESTA chamada e e o que a mensagem de erro
+ * cita. Serve para nao falar de PDF na tela de notas, que so tira foto: quem le
+ * o texto e o colaborador em campo, e citar um formato que a tela nem oferece so
+ * o faz procurar defeito onde nao ha. O padrao continua sendo todos os tipos
+ * conhecidos, que e o caso dos anexos de solicitacao.
  */
 export function assertFileSignature(
   bytes: Uint8Array,
   declaredMimeType: string,
   fileName: string,
+  accept: readonly string[] = SIGNATURE_MIME_TYPES,
 ): string {
   const detected = detectFileSignature(bytes);
 
-  if (!detected) {
-    throw new ApiError(400, `O arquivo "${fileName}" não é um PDF, JPG ou PNG válido.`);
+  if (!detected || !accept.includes(detected)) {
+    throw new ApiError(
+      400,
+      `O arquivo "${fileName}" não é um ${describeMimeTypes(accept)} válido.`,
+    );
   }
 
   if (detected !== declaredMimeType) {

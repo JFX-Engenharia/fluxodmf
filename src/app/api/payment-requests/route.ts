@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { assertBodySize, MEGABYTE } from "@/lib/body-size";
-import { requireMutationAllowed, requireUser } from "@/lib/auth";
+import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { assertFileSignature } from "@/lib/file-signature";
 import { withIdempotency } from "@/lib/idempotency";
@@ -103,7 +103,7 @@ const include = {
 
 export async function GET() {
   try {
-    const actor = await requireUser();
+    const actor = await requireTab("solicitacoes");
     const where =
       actor.role === Role.ADMINISTRADOR
         ? {}
@@ -126,7 +126,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireUser();
+    const actor = await requireTab("solicitacoes");
     await requireMutationAllowed(actor);
     // Barra o envio pelo cabecalho antes de bufferizar o multipart e antes de
     // reservar chave de idempotencia. Os limites por anexo continuam valendo.
@@ -146,7 +146,9 @@ export async function POST(request: Request) {
     if (attachments.length > MAX_ATTACHMENTS) {
       throw new ApiError(400, `Anexe no máximo ${MAX_ATTACHMENTS} documentos.`);
     }
-    if (attachments.some((file) => !allowedMimeTypes[file.type] || file.size === 0 || file.size > MAX_ATTACHMENT_SIZE)) {
+    // Object.hasOwn e nao indexacao: `allowedMimeTypes["constructor"]` acharia o
+    // que veio do prototype e um Content-Type desses passaria pela allowlist.
+    if (attachments.some((file) => !Object.hasOwn(allowedMimeTypes, file.type) || file.size === 0 || file.size > MAX_ATTACHMENT_SIZE)) {
       throw new ApiError(400, "Cada anexo deve ser PDF, JPG ou PNG de até 5 MB.");
     }
 

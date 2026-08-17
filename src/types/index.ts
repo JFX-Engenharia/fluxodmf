@@ -1,4 +1,5 @@
 import type { Role, UserStatus } from "@prisma-generated/enums";
+import type { MissingField } from "@/lib/missing-info";
 
 export type SessionUser = {
   id: string;
@@ -27,7 +28,13 @@ export type PaymentImportRow = {
   workName?: string;
   isNewWork: boolean;
   uniqueKey: string;
+  /**
+   * SO o que impede a linha de virar compra: fornecedor, valor e duplicidade.
+   * Vazio significa "entra no lote" — e o que todo o pipeline ja testa.
+   */
   errors: string[];
+  /** Campos que a planilha omitiu e que entram preenchidos com marcador. */
+  undefinedFields: MissingField[];
   duplicate: boolean;
 };
 
@@ -63,6 +70,8 @@ export type ImportPreview = {
   totalRows: number;
   validRows: number;
   invalidRows: number;
+  /** Subconjunto de validRows que entra com algum campo INDEFINIDO. */
+  incompleteRows: number;
   duplicateRows: number;
   totalAmount: number;
   rows: PaymentImportRow[];

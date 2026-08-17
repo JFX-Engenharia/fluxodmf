@@ -6,7 +6,7 @@ type PrismaClientInstance = InstanceType<typeof PrismaClient>;
 
 // Invalida o singleton após migrações que alteram os delegates do Prisma. Sem
 // isso, o Fast Refresh pode conservar um cliente criado antes do `generate`.
-const PRISMA_RUNTIME_VERSION = "20260729100100_import_tasks";
+const PRISMA_RUNTIME_VERSION = "20260814000000_colaborador_receipt_notes";
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClientInstance;

@@ -2,15 +2,17 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
-import { requireUser } from "@/lib/auth";
+import { requireTab } from "@/lib/auth";
 import { DEVICE_COOKIE, hashDeviceToken } from "@/lib/device";
 import { prisma } from "@/lib/db";
 
 const revokeSchema = z.object({ deviceId: z.string().min(1) });
 
+// A tela de dispositivos e area do painel. O VINCULO de dispositivo continua
+// funcionando para todo mundo: ele acontece no login, nao nesta rota.
 export async function GET(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requireTab("dispositivos");
     const cookieToken = request.cookies.get(DEVICE_COOKIE)?.value;
     const currentTokenHash = cookieToken ? hashDeviceToken(cookieToken) : null;
     const devices = await prisma.device.findMany({
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const user = await requireUser();
+    const user = await requireTab("dispositivos");
     const { deviceId } = revokeSchema.parse(await request.json());
     const target = await prisma.device.findFirst({
       where: { id: deviceId, userId: user.id },

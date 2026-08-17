@@ -18,6 +18,7 @@ export function canPermanentlyDeleteUsers(username: string) {
  * Gestor        -> operação financeira.
  * Aprovador     -> aprova pagamentos e fecha fluxos.
  * Administrador -> acesso total, incluindo áreas críticas (usuários, permissões e logs).
+ * Colaborador   -> somente a tela de envio de notas; nada do painel.
  */
 export const TAB_IDS = [
   "dashboard",
@@ -33,10 +34,17 @@ export const TAB_IDS = [
   "usuarios",
   "permissoes",
   "logs",
+  // Permissao da tela /notas: NAO e aba do painel, nao tem TabDefinition.
+  "notas",
+  "notas-colaboradores",
 ] as const;
 
 export type TabId = (typeof TAB_IDS)[number];
 
+/**
+ * Perfis do painel. COLABORADOR fica FORA de proposito: e o que o isola na tela
+ * de notas — qualquer aba que use ALL_ROLES continua invisivel para ele.
+ */
 const ALL_ROLES: Role[] = [
   Role.OPERADOR,
   Role.GESTOR,
@@ -60,6 +68,8 @@ export const tabRoles: Record<TabId, Role[]> = {
   usuarios: CRITICAL,
   permissoes: CRITICAL,
   logs: CRITICAL,
+  notas: [Role.COLABORADOR],
+  "notas-colaboradores": MANAGEMENT,
 };
 
 export function canAccessTab(role: Role, tab: TabId) {
@@ -91,6 +101,7 @@ export const roleLabels: Record<Role, string> = {
   GESTOR: "Gestor",
   APROVADOR: "Aprovador",
   ADMINISTRADOR: "Administrador",
+  COLABORADOR: "Colaborador",
 };
 
 export const roleDescriptions: Record<Role, string> = {
@@ -98,4 +109,5 @@ export const roleDescriptions: Record<Role, string> = {
   GESTOR: "Opera pagamentos e adiantamentos.",
   APROVADOR: "Aprova pagamentos e fecha fluxos em aprovação.",
   ADMINISTRADOR: "Acesso total, incluindo usuários, permissões e logs.",
+  COLABORADOR: "Envia fotos de notas fiscais do cartão CAJU pelo celular. Não acessa o painel.",
 };

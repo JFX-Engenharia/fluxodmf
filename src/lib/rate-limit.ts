@@ -24,6 +24,15 @@ const RULES = {
     windowMs: 60 * 60 * 1_000,
     message: "Muitas solicitações de cadastro deste endereço. Tente novamente mais tarde.",
   },
+  // Envio de notas do PWA. Conta por USUARIO, nao por IP: o colaborador esta em
+  // rede movel, onde a operadora compartilha o mesmo IP entre muitos aparelhos
+  // (CGNAT) e um limite por IP puniria a equipe inteira. O teto e folgado de
+  // proposito — quem volta de uma area sem sinal despeja a fila acumulada.
+  "nota-upload": {
+    limit: 30,
+    windowMs: 10 * 60 * 1_000,
+    message: "Muitos envios seguidos. Aguarde alguns minutos e tente de novo.",
+  },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitName = keyof typeof RULES;

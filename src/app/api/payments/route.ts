@@ -32,24 +32,26 @@ export async function GET(request: Request) {
 
     const flowWhere = flow ? { importBatchId: flow.importBatchId } : {};
 
+    const where = {
+      ...flowWhere,
+      status: status && Object.values(PaymentStatus).includes(status) ? status : undefined,
+      workId: workId || undefined,
+      currentDueDate: from || to ? { gte: from, lte: to } : undefined,
+      OR: search
+        ? [
+            { supplierName: { contains: search } },
+            { description: { contains: search } },
+            { costCenter: { contains: search } },
+            { category: { contains: search } },
+          ]
+        : undefined,
+    };
+
     const [payments, statusTotals, alteredDateActions] = await Promise.all([
       prisma.payment.findMany({
-        where: {
-          ...flowWhere,
-          status: status && Object.values(PaymentStatus).includes(status) ? status : undefined,
-          workId: workId || undefined,
-          currentDueDate: from || to ? { gte: from, lte: to } : undefined,
-          OR: search
-            ? [
-                { supplierName: { contains: search } },
-                { description: { contains: search } },
-                { costCenter: { contains: search } },
-                { category: { contains: search } },
-              ]
-            : undefined,
-        },
+        where,
         orderBy: [{ currentDueDate: "asc" }, { createdAt: "desc" }],
-        take: 200,
+        take: 201,
         include: {
           work: true,
           importBatch: true,
@@ -68,7 +70,7 @@ export async function GET(request: Request) {
       }),
       prisma.payment.groupBy({
         by: ["status"],
-        where: flowWhere,
+        where,
         _count: { _all: true },
         _sum: { amount: true },
       }),
@@ -82,6 +84,8 @@ export async function GET(request: Request) {
       }),
     ]);
 
+    const hasMore = payments.length > 200;
+    const visiblePayments = payments.slice(0, 200);
     const countStatus = (target: PaymentStatus) =>
       statusTotals.find((row) => row.status === target)?._count._all ?? 0;
     const total = statusTotals.reduce((sum, row) => sum + row._count._all, 0);
@@ -89,7 +93,8 @@ export async function GET(request: Request) {
     const rejected = countStatus(PaymentStatus.REPROVADO);
 
     return ok({
-      payments: payments.map(serializePayment),
+      payments: visiblePayments.map(serializePayment),
+      hasMore,
       summary: {
         total,
         approved,

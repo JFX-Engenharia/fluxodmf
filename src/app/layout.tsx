@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -15,6 +15,18 @@ export const metadata: Metadata = {
     follow: false,
     nocache: true,
   },
+  appleWebApp: {
+    capable: true,
+    title: "Notas",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#258F3D",
 };
 
 export default function RootLayout({

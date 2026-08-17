@@ -3,6 +3,7 @@ import { ApiError, handleApiError } from "@/lib/api";
 import { auditLog } from "@/lib/audit";
 import { requireTab } from "@/lib/auth";
 import { assertBodySize, MEGABYTE } from "@/lib/body-size";
+import { UNDEFINED_WORK_SLUG } from "@/lib/cost-center";
 import { prisma } from "@/lib/db";
 import { buildFlowWorkbook, convertRawFile } from "@/lib/flow-converter";
 import { readConvertUpload } from "./upload";
@@ -44,7 +45,9 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const { file, data } = await readConvertUpload(formData);
     const aportes = aportesSchema.parse(parseAportes(formData.get("aportes")));
-    const works = await prisma.work.findMany({ where: { active: true } });
+    const works = await prisma.work.findMany({
+      where: { OR: [{ active: true }, { slug: UNDEFINED_WORK_SLUG }] },
+    });
 
     let conversion;
     try {

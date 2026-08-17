@@ -179,11 +179,12 @@ export async function GET() {
         status: { in: UNDECIDED_STATUSES },
       },
       orderBy: [{ currentDueDate: "asc" }, { supplierName: "asc" }],
-      take: 100,
+      take: 101,
       include: { work: true },
     });
 
-    const flow = openFlow.map((payment) => ({
+    const hasMore = openFlow.length > 100;
+    const flow = openFlow.slice(0, 100).map((payment) => ({
       ...serializePayment(payment),
       overdue: payment.currentDueDate < dayStart,
       dueToday: payment.currentDueDate >= dayStart && payment.currentDueDate < dayEnd,
@@ -205,6 +206,7 @@ export async function GET() {
       byAccount,
       byCategory,
       flow,
+      hasMore,
     });
   } catch (error) {
     return handleApiError(error);

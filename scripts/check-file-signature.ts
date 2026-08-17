@@ -242,6 +242,41 @@ for (const [conteudo, declarado, nome] of [
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Recorte por chamada (`accept`): a tela de notas so aceita foto               */
+/* -------------------------------------------------------------------------- */
+
+const FOTO = ["image/jpeg", "image/png"] as const;
+
+// O que a camera produz continua passando, e o tipo detectado e o devolvido.
+assert.equal(assertFileSignature(JPEG, "image/jpeg", "nota.jpg", FOTO), "image/jpeg");
+assert.equal(assertFileSignature(PNG, "image/png", "nota.png", FOTO), "image/png");
+
+// PDF e conhecido pelo detector, mas nao esta no recorte desta chamada: recusa
+// sem citar PDF, que e o formato que a tela do colaborador nem oferece.
+const pdfNaNota = rejection(() =>
+  assertFileSignature(PDF, "application/pdf", "nota.pdf", FOTO),
+) as ApiError;
+assert.equal(pdfNaNota.status, 400);
+assert.match(pdfNaNota.message, /não é um JPG ou PNG válido/);
+assert.doesNotMatch(pdfNaNota.message, /PDF/);
+
+// Conteudo irreconhecivel cai na mesma mensagem recortada.
+assert.match(
+  (rejection(() => assertFileSignature(CSV, "image/jpeg", "nota.jpg", FOTO)) as ApiError).message,
+  /não é um JPG ou PNG válido/,
+);
+
+// Um unico tipo aceito nao produz "ou" solto na frase.
+assert.match(
+  (
+    rejection(() =>
+      assertFileSignature(PNG, "image/jpeg", "so-jpeg.jpg", ["image/jpeg"]),
+    ) as ApiError
+  ).message,
+  /não é um JPG válido/,
+);
+
 console.log(
-  "OK: magic bytes de PDF/JPEG/PNG e de CSV/XLS/XLSX, excecao .xls do Conta Azul e anexos inalterados.",
+  "OK: magic bytes de PDF/JPEG/PNG e de CSV/XLS/XLSX, excecao .xls do Conta Azul, anexos inalterados e recorte de tipos por chamada.",
 );

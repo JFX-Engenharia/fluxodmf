@@ -1,5 +1,5 @@
 import { handleApiError, ok } from "@/lib/api";
-import { requireUser } from "@/lib/auth";
+import { requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { canAccessTab, type TabId } from "@/lib/permissions";
 
@@ -19,7 +19,8 @@ function numericSearch(query: string) {
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser();
+    // Busca global do painel: exige acesso ao painel, nao apenas sessao valida.
+    const user = await requireTab("dashboard");
     const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
     if (query.length < 2) return ok({ results: [] });
     const amount = numericSearch(query);

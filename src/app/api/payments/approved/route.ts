@@ -77,7 +77,7 @@ export async function GET(request: Request) {
       prisma.dailyFlow.findMany({
         where: { importBatch: { importedById: user.id } },
         orderBy: { createdAt: "desc" },
-        take: 60,
+        take: 61,
         select: {
           id: true,
           createdAt: true,
@@ -86,6 +86,8 @@ export async function GET(request: Request) {
       }),
     ]);
 
+    const hasMore = flows.length > 60;
+    const visibleFlows = flows.slice(0, 60);
     const rows = payments.map((payment) => ({
       id: payment.id,
       supplierName: payment.supplierName,
@@ -106,7 +108,7 @@ export async function GET(request: Request) {
 
     return ok({
       payments: rows,
-      flows: flows.map((flow) => ({
+      flows: visibleFlows.map((flow) => ({
         id: flow.id,
         name: flow.importBatch.fileName,
         createdAt: flow.createdAt.toISOString(),
@@ -116,6 +118,7 @@ export async function GET(request: Request) {
         amount: Number(rows.reduce((sum, payment) => sum + payment.amount, 0).toFixed(2)),
         flows: new Set(rows.map((payment) => payment.flow.batchId)).size,
       },
+      hasMore,
     });
   } catch (error) {
     return handleApiError(error);
