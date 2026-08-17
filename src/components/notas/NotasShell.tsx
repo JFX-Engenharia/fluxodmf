@@ -50,6 +50,8 @@ type ReceiptNoteListResponse = {
   nextCursor: string | null;
 };
 
+type HistoryFilters = { from: string; to: string };
+
 const LAST_CONFIRMED_OWNER_STORAGE_KEY = "fluxo-notas:last-confirmed-owner";
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -123,6 +125,18 @@ function getOnlineStatus(): boolean {
   return navigator.onLine;
 }
 
+function isCapturedInPeriod(capturedAt: string, filters: HistoryFilters): boolean {
+  if (!filters.from && !filters.to) return true;
+
+  const capturedAtTime = new Date(capturedAt).getTime();
+  if (Number.isNaN(capturedAtTime)) return false;
+
+  const fromTime = filters.from ? new Date(`${filters.from}T00:00:00.000Z`).getTime() : null;
+  const toTime = filters.to ? new Date(`${filters.to}T23:59:59.999Z`).getTime() : null;
+
+  return (fromTime === null || capturedAtTime >= fromTime) && (toTime === null || capturedAtTime <= toTime);
+}
+
 export function NotasShell({ ownerId }: NotasShellProps) {
   const syncSnapshot = useSyncExternalStore(
     subscribeNotaSync,
@@ -149,19 +163,32 @@ export function NotasShell({ ownerId }: NotasShellProps) {
   );
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [historyFilters, setHistoryFilters] = useState<HistoryFilters>({ from: "", to: "" });
   const historyRequestId = useRef(0);
+  const historyFiltersRef = useRef(historyFilters);
   const ownerStateRef = useRef(ownerState);
   const [ownerRetryKey, setOwnerRetryKey] = useState(0);
   const canCapture = activeOwnerId !== null && (ownerState === "ready" || ownerState === "offline");
 
   const records = useMemo(() => {
     if (!activeOwnerId) return [];
-    const local = localRecordsOwnerId === activeOwnerId ? localRecords : [];
+    const local = (localRecordsOwnerId === activeOwnerId ? localRecords : [])
+      .filter((record) => isCapturedInPeriod(record.capturedAt, historyFilters));
     const localKeys = new Set(local.map((record) => record.id));
     const server = (serverRecordsOwnerId === activeOwnerId ? serverRecords : [])
-      .filter((record) => !record.clientKey || !localKeys.has(record.clientKey));
+      .filter((record) => (
+        isCapturedInPeriod(record.capturedAt, historyFilters) &&
+        (!record.clientKey || !localKeys.has(record.clientKey))
+      ));
     return [...server, ...local].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-  }, [activeOwnerId, localRecords, localRecordsOwnerId, serverRecords, serverRecordsOwnerId]);
+  }, [
+    activeOwnerId,
+    historyFilters,
+    localRecords,
+    localRecordsOwnerId,
+    serverRecords,
+    serverRecordsOwnerId,
+  ]);
 
   const reload = useCallback(async () => {
     if (!activeOwnerId) return;
@@ -174,13 +201,15 @@ export function NotasShell({ ownerId }: NotasShellProps) {
     }
   }, [activeOwnerId]);
 
-  const reloadServerHistory = useCallback(async () => {
+  const reloadServerHistory = useCallback(async (filters: HistoryFilters) => {
     if (!activeOwnerId) return;
     const requestId = ++historyRequestId.current;
     setLoadingMoreHistory(false);
 
     try {
       const query = new URLSearchParams({ take: String(HISTORY_PAGE_SIZE) });
+      if (filters.from) query.set("from", filters.from);
+      if (filters.to) query.set("to", filters.to);
       const response = await fetch(`/api/notas?${query}`, {
         cache: "no-store",
         credentials: "same-origin",
@@ -212,6 +241,9 @@ export function NotasShell({ ownerId }: NotasShellProps) {
 
     try {
       const query = new URLSearchParams({ take: String(HISTORY_PAGE_SIZE), cursor: serverNextCursor });
+      const filters = historyFiltersRef.current;
+      if (filters.from) query.set("from", filters.from);
+      if (filters.to) query.set("to", filters.to);
       const response = await fetch(`/api/notas?${query}`, {
         cache: "no-store",
         credentials: "same-origin",
@@ -236,6 +268,30 @@ export function NotasShell({ ownerId }: NotasShellProps) {
       if (historyRequestId.current === requestId) setLoadingMoreHistory(false);
     }
   }, [activeOwnerId, loadingMoreHistory, serverNextCursor, serverNextCursorOwnerId]);
+
+  function updateHistoryFilters(field: keyof HistoryFilters, value: string) {
+    const filters = { ...historyFiltersRef.current, [field]: value };
+    historyFiltersRef.current = filters;
+    historyRequestId.current += 1;
+    setHistoryFilters(filters);
+    setServerRecords([]);
+    setServerRecordsOwnerId(null);
+    setServerNextCursor(null);
+    setServerNextCursorOwnerId(null);
+    void reloadServerHistory(filters);
+  }
+
+  function clearHistoryFilters() {
+    const filters = { from: "", to: "" };
+    historyFiltersRef.current = filters;
+    historyRequestId.current += 1;
+    setHistoryFilters(filters);
+    setServerRecords([]);
+    setServerRecordsOwnerId(null);
+    setServerNextCursor(null);
+    setServerNextCursorOwnerId(null);
+    void reloadServerHistory(filters);
+  }
 
   useEffect(() => {
     const onOnline = () => {
@@ -335,7 +391,7 @@ export function NotasShell({ ownerId }: NotasShellProps) {
     const stopSync = startNotaSync(activeOwnerId);
     queueMicrotask(() => {
       void reload();
-      void reloadServerHistory();
+      void reloadServerHistory(historyFiltersRef.current);
     });
     return stopSync;
   }, [activeOwnerId, reload, reloadServerHistory]);
@@ -413,7 +469,7 @@ export function NotasShell({ ownerId }: NotasShellProps) {
       }
       await reload();
       if (saved > 0) {
-        void kickNotaSync(activeOwnerId).finally(() => void reloadServerHistory());
+        void kickNotaSync(activeOwnerId).finally(() => void reloadServerHistory(historyFiltersRef.current));
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível guardar a foto.");
@@ -427,7 +483,7 @@ export function NotasShell({ ownerId }: NotasShellProps) {
     if (!activeOwnerId) return;
     await markRetry(id, Date.now(), null);
     await reload();
-    void kickNotaSync(activeOwnerId).finally(() => void reloadServerHistory());
+    void kickNotaSync(activeOwnerId).finally(() => void reloadServerHistory(historyFiltersRef.current));
   }
 
   async function remove(id: string) {
@@ -498,7 +554,16 @@ export function NotasShell({ ownerId }: NotasShellProps) {
         {queueMessage}
       </p>
       <InstallHint />
-      <NotaList records={records} onRetry={retry} onDelete={remove} />
+      <NotaList
+        records={records}
+        from={historyFilters.from}
+        to={historyFilters.to}
+        onFromChange={(value) => updateHistoryFilters("from", value)}
+        onToChange={(value) => updateHistoryFilters("to", value)}
+        onClearFilters={clearHistoryFilters}
+        onRetry={retry}
+        onDelete={remove}
+      />
       {canLoadMoreHistory ? (
         <div className="button-row">
           <button

@@ -119,6 +119,7 @@ model User {
   reviewedAt    DateTime?
   works         UserWork[]
   imports       ImportBatch[]     @relation("ImportedBy")
+  paymentBatches PaymentBatchAction[] @relation("PaymentBatchActor")
   payments      Payment[]         @relation("PaymentCreatedBy")
   actions       PaymentAction[]
   auditLogs     AuditLog[]        @relation("AuditActor")
@@ -273,6 +274,46 @@ model ImportBatch {
   finishedAt            DateTime?
   createdAt     DateTime       @default(now())
   @@index([importedById, createdAt])
+}
+
+/// Acao aplicada a muitos pagamentos de uma vez, processada em segundo plano.
+///
+/// Existe porque o lote era N requisicoes HTTP em serie, uma por pagamento, e
+/// um fluxo diario tem de 50 a 200 — dava 30 a 90 segundos de espera. Aqui a
+/// autenticacao, a checagem de manutencao e as regras de aprovacao sao
+/// resolvidas UMA vez para o lote inteiro, e o restante roda em chunks.
+///
+/// O estado mora no banco, e nao em memoria, pelo mesmo motivo do ImportBatch:
+/// para o job ser retomavel se o processo cair, e para a UI poder acompanhar
+/// por polling depois de fechar a aba.
+model PaymentBatchAction {
+  id               String       @id @default(cuid())
+  actorId          String
+  actor            User         @relation("PaymentBatchActor", fields: [actorId], references: [id])
+  action           String
+  reason           String       @default("")
+  standardReasonId String?
+  newDueDate       DateTime?
+  /// Array JSON dos ids alvo, como ImportBatch.payload.
+  paymentIds       String
+  status           ImportStatus @default(PENDENTE)
+  totalCount       Int
+  processedCount   Int          @default(0)
+  successCount     Int          @default(0)
+  failedCount      Int          @default(0)
+  /// Resultado POR ITEM em JSON: falha parcial e requisito, nao detalhe. Um
+  /// lote heterogeneo legitimamente aprova uns e recusa outros, porque a
+  /// alcada depende do valor de cada pagamento. Tambem e o que permite retomar
+  /// sem reaplicar o que ja foi feito.
+  results          String       @default("[]")
+  attempts         Int          @default(0)
+  error            String       @default("")
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  createdAt        DateTime     @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([status, createdAt])
 }
 
 /// Aportes por conta (bloco APORTES da planilha). Valor que entra na conta
@@ -556,6 +597,10 @@ model ReceiptNote {
 
   @@index([userId, createdAt])
   @@index([createdAt])
+  /// O filtro por periodo da gestao e do PWA usa capturedAt, nao createdAt: o
+  /// que interessa e quando a compra aconteceu, e a foto pode ficar dias na
+  /// fila offline antes de chegar. Sem este indice o filtro vira seq scan.
+  @@index([userId, capturedAt])
 }
 
 model PaymentAction {

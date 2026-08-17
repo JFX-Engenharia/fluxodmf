@@ -15,7 +15,7 @@ import {
   Tags,
   XCircle,
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Money } from "@/components/Money";
 import { StatusBadge } from "@/components/StatusBadge";
 import { usePanel } from "@/components/panel/PanelContext";
@@ -147,7 +147,27 @@ const batchActionLabels: Record<BatchAction, string> = {
   reopen: "Voltar para em aberto",
 };
 
-type BatchResult = { done: number; failed: { supplier: string; error: string }[] };
+/** Resultado de um pagamento dentro do lote, como o servidor o devolve. */
+type BatchItemResult = {
+  paymentId: string;
+  ok: boolean;
+  supplierName?: string;
+  status?: string;
+  error?: string;
+};
+
+type BatchJob = {
+  id: string;
+  status: "PENDENTE" | "PROCESSANDO" | "CONFIRMADO" | "FALHOU";
+  totalCount: number;
+  processedCount: number;
+  successCount: number;
+  failedCount: number;
+  results: BatchItemResult[];
+  error: string;
+};
+
+type BatchJobsResponse = { jobs: BatchJob[]; error?: string };
 
 export function PaymentsTab() {
   const { user, goToTab } = usePanel();
@@ -176,7 +196,10 @@ export function PaymentsTab() {
   const [batchReason, setBatchReason] = useState("");
   const [batchStandardReasonId, setBatchStandardReasonId] = useState("");
   const [batchDueDate, setBatchDueDate] = useState("");
-  const [batchProgress, setBatchProgress] = useState(0);
+  // O lote roda no servidor: aqui fica so o id que esta sendo acompanhado e o
+  // ultimo retrato recebido dele.
+  const [batchJobId, setBatchJobId] = useState("");
+  const [batchJob, setBatchJob] = useState<BatchJob | null>(null);
   const [flowId, setFlowId] = useState("");
   const [flowBusy, setFlowBusy] = useState(false);
   const [flowReopenOpen, setFlowReopenOpen] = useState(false);
@@ -224,6 +247,7 @@ export function PaymentsTab() {
    * pagamento que o usuario nao esta mais vendo.
    */
   const batchPayments = payments.filter((payment) => batch.includes(payment.id));
+  const batchFailures = batchJob?.results.filter((item) => !item.ok) ?? [];
   const batchTotal = batchPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
   async function changeFlow(action: "close" | "reopen", reason?: string) {
@@ -256,6 +280,67 @@ export function PaymentsTab() {
       setFlowBusy(false);
     }
   }
+
+  /**
+   * Acompanha o lote em andamento. O progresso chega a cada 2,5s, e nao a cada
+   * pagamento: com 200 linhas na tela, atualizar item a item significava
+   * re-renderizar a lista inteira dezenas de vezes durante o processamento.
+   *
+   * Todo setState acontece dentro do callback assincrono, nunca no corpo do
+   * efeito — mesma regra que useFetchData ja segue.
+   */
+  useEffect(() => {
+    if (!batchJobId) return;
+    let cancelled = false;
+
+    async function refreshJob() {
+      try {
+        const response = await fetch("/api/payments/actions");
+        const data: BatchJobsResponse = await response.json();
+        if (cancelled) return;
+        if (!response.ok) {
+          setError(data.error ?? "Não foi possível acompanhar o lote.");
+          return;
+        }
+
+        const job = data.jobs?.find(({ id }) => id === batchJobId);
+        if (!job) return;
+        setBatchJob(job);
+        if (job.status !== "CONFIRMADO" && job.status !== "FALHOU") return;
+
+        setBatchJobId("");
+        setBusy(false);
+        setBatchOpen(false);
+        setBatch([]);
+        setBatchReason("");
+        setBatchStandardReasonId("");
+        setBatchDueDate("");
+
+        if (job.status === "FALHOU") {
+          setError(job.error || "O lote não pôde ser concluído. Tente novamente.");
+        } else if (job.failedCount === 0) {
+          setMessage(`${job.successCount} pagamento(s) processado(s) com sucesso.`);
+        } else {
+          setMessage(job.successCount > 0 ? `${job.successCount} pagamento(s) processado(s).` : "");
+          setError(
+            `${job.failedCount} pagamento(s) não puderam ser processados. O motivo de cada um está abaixo.`,
+          );
+        }
+
+        reload();
+        reloadFlows();
+      } catch {
+        if (!cancelled) setError("Falha de conexão ao acompanhar o lote.");
+      }
+    }
+
+    void refreshJob();
+    const interval = window.setInterval(() => void refreshJob(), 2_500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [batchJobId, reload, reloadFlows, setError]);
 
   function toggleBatch(id: string) {
     // Clicar marca/desmarca no lote e sempre leva os detalhes para o clicado.
@@ -350,10 +435,13 @@ export function PaymentsTab() {
   }
 
   /**
-   * Aplica a acao a cada pagamento do lote. Vai um a um de proposito: reusa a
-   * rota individual (com o RBAC e as regras de status que ela ja aplica) e
-   * deixa cada pagamento com seu proprio registro na auditoria. Um erro em um
-   * item nao aborta o resto; no fim o usuario ve o que falhou e por que.
+   * Envia o lote inteiro numa UNICA chamada e passa a acompanhar o job.
+   *
+   * Antes, isto era um laco com uma requisicao por pagamento, em serie: cada
+   * uma refazia autenticacao, idempotencia e as mesmas consultas, e 150
+   * pagamentos levavam dezenas de segundos com a aba presa. Agora o servidor
+   * processa em segundo plano, no molde da importacao de planilha — fechar a
+   * aba nao interrompe mais nada.
    */
   async function runBatch(event: FormEvent) {
     event.preventDefault();
@@ -362,7 +450,7 @@ export function PaymentsTab() {
     setBusy(true);
     setError("");
     setMessage("");
-    setBatchProgress(0);
+    setBatchJob(null);
 
     const payload: Record<string, unknown> =
       batchAction === "approve"
@@ -371,61 +459,43 @@ export function PaymentsTab() {
           ? { reason: batchReason, standardReasonId: batchStandardReasonId || undefined, newDueDate: batchDueDate }
           : { reason: batchReason, standardReasonId: batchStandardReasonId || undefined };
 
-    const result: BatchResult = { done: 0, failed: [] };
-    const batchKey = crypto.randomUUID();
+    try {
+      const response = await fetch("/api/payments/actions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // Uma chave para o lote todo: duplo clique nao cria dois jobs.
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify({
+          action: batchAction,
+          paymentIds: batchPayments.map((payment) => payment.id),
+          ...payload,
+        }),
+      });
+      const data = await response.json();
 
-    for (const payment of batchPayments) {
-      try {
-        const response = await fetch(`/api/payments/${payment.id}/action`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": `${batchKey}:${payment.id}`,
-          },
-          body: JSON.stringify({ action: batchAction, ...payload }),
-        });
-
-        if (response.ok) {
-          result.done += 1;
-        } else {
-          const data = await response.json();
-          result.failed.push({
-            supplier: payment.supplierName,
-            error: data.error ?? "erro desconhecido",
-          });
-        }
-      } catch {
-        result.failed.push({ supplier: payment.supplierName, error: "falha de conexão" });
+      if (!response.ok) {
+        setError(data.error ?? "Não foi possível iniciar o lote.");
+        setBusy(false);
+        return;
       }
 
-      setBatchProgress((value) => value + 1);
+      setBatchJob({
+        id: data.jobId,
+        status: data.status,
+        totalCount: data.totalCount ?? batchPayments.length,
+        processedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        results: [],
+        error: "",
+      });
+      setBatchJobId(data.jobId);
+    } catch {
+      setError("Falha de conexão ao iniciar o lote.");
+      setBusy(false);
     }
-
-    setBusy(false);
-    setBatchOpen(false);
-    setBatch([]);
-    setBatchReason("");
-    setBatchStandardReasonId("");
-    setBatchDueDate("");
-    setBatchProgress(0);
-
-    const verb = batchActionLabels[batchAction].toLowerCase();
-    if (result.failed.length === 0) {
-      setMessage(`${result.done} pagamento(s) processado(s) com sucesso (${verb}).`);
-    } else {
-      setMessage(result.done > 0 ? `${result.done} pagamento(s) processado(s).` : "");
-      setError(
-        `${result.failed.length} falhou(ram): ` +
-          result.failed
-            .slice(0, 3)
-            .map((item) => `${item.supplier} (${item.error})`)
-            .join("; ") +
-          (result.failed.length > 3 ? ` e mais ${result.failed.length - 3}.` : ""),
-      );
-    }
-
-    reload();
-    reloadFlows();
   }
 
   function onSubmitModal(event: FormEvent) {
@@ -649,6 +719,38 @@ export function PaymentsTab() {
       {flowError ? <div className="alert error" role="alert">{flowError}</div> : null}
       {error ? <div className="alert error" role="alert">{error}</div> : null}
       {message ? <div className="alert success" role="status">{message}</div> : null}
+
+      {/* Lote heterogeneo recusa uns e aprova outros por regra de alcada, entao
+          o motivo de cada recusa precisa aparecer inteiro — resumir em "3 de 40
+          falharam" obriga o conferente a descobrir na mao quais foram. */}
+      {batchFailures.length > 0 ? (
+        <div className="panel pad">
+          <div className="section-header">
+            <h2>Pagamentos não processados ({batchFailures.length})</h2>
+            <button className="button ghost" type="button" onClick={() => setBatchJob(null)}>
+              Fechar
+            </button>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Pagamento</th>
+                  <th>Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batchFailures.map((item) => (
+                  <tr key={item.paymentId}>
+                    <td>{item.supplierName || item.paymentId}</td>
+                    <td>{item.error || "Não foi possível processar."}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       <section className="split-grid">
         <div className="section">
@@ -1105,8 +1207,14 @@ export function PaymentsTab() {
             </div>
 
             {busy ? (
-              <p className="muted">
-                Processando {batchProgress} de {batchPayments.length}...
+              <p className="muted" role="status">
+                {/* O progresso vem do job no servidor, nao de um contador local:
+                    o lote continua rodando mesmo se esta aba for fechada. */}
+                Processando {batchJob?.processedCount ?? 0} de{" "}
+                {batchJob?.totalCount ?? batchPayments.length}...
+                {batchJob && batchJob.failedCount > 0
+                  ? ` (${batchJob.failedCount} com problema)`
+                  : ""}
               </p>
             ) : null}
 

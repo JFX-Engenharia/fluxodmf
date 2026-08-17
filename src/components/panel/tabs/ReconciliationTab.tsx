@@ -1,6 +1,14 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, FileDown, FileSpreadsheet, Scale } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  FileDown,
+  FileSpreadsheet,
+  Scale,
+} from "lucide-react";
 import { ChangeEvent, useRef, useState } from "react";
 import { Money } from "@/components/Money";
 import { money, shortDate } from "@/lib/format";
@@ -24,6 +32,16 @@ export function ReconciliationTab() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
 
+  /**
+   * Linhas que o conferente tirou da vista, por rowNumber — a unica chave
+   * estavel de uma linha do extrato (a conciliacao nao envolve Payment, entao
+   * nao ha id de banco). Vive so nesta conferencia: o proprio resultado da
+   * conciliacao ja e efemero e some ao recarregar, entao persistir o que foi
+   * ocultado guardaria uma escolha sobre linhas que nao existem mais.
+   */
+  const [hiddenRows, setHiddenRows] = useState<Set<number>>(new Set());
+  const [showHidden, setShowHidden] = useState(false);
+
   const internalRef = useRef<HTMLInputElement>(null);
   const cajuRef = useRef<HTMLInputElement>(null);
 
@@ -46,11 +64,29 @@ export function ReconciliationTab() {
     },
   ];
 
+  /**
+   * Os rowNumber sao posicoes no arquivo que acabou de sair de cena: mantidos,
+   * passariam a ocultar linhas diferentes das escolhidas.
+   */
+  function clearHidden() {
+    setHiddenRows(new Set());
+    setShowHidden(false);
+  }
+
+  function toggleHidden(rowNumber: number) {
+    setHiddenRows((current) => {
+      const next = new Set(current);
+      if (!next.delete(rowNumber)) next.add(rowNumber);
+      return next;
+    });
+  }
+
   function onPick(slot: FileSlot) {
     return (event: ChangeEvent<HTMLInputElement>) => {
       slot.set(event.target.files?.[0] ?? null);
       setResult(null);
       setError("");
+      clearHidden();
     };
   }
 
@@ -60,6 +96,7 @@ export function ReconciliationTab() {
     setBusy(true);
     setError("");
     setResult(null);
+    clearHidden();
 
     try {
       const formData = new FormData();
@@ -84,7 +121,7 @@ export function ReconciliationTab() {
   }
 
   async function exportMissingNotes() {
-    if (!result || result.pending.length === 0) return;
+    if (!result || visiblePending.length === 0) return;
     setExporting(true);
     setError("");
 
@@ -94,7 +131,9 @@ export function ReconciliationTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           collaborators: result.collaborators,
-          rows: result.pending,
+          // O PDF imprime exatamente o que recebe, entao mandar so as visiveis
+          // e o que faz o "ocultar" valer na exportacao.
+          rows: visiblePending,
         }),
       });
       if (!response.ok) {
@@ -120,6 +159,14 @@ export function ReconciliationTab() {
       setExporting(false);
     }
   }
+
+  const visiblePending = result
+    ? result.pending.filter((row) => !hiddenRows.has(row.rowNumber))
+    : [];
+  const hiddenCount = result ? result.pending.length - visiblePending.length : 0;
+  // As linhas mostradas na tabela: com "Mostrar ocultas" ligado, todas.
+  const listedPending = showHidden ? (result?.pending ?? []) : visiblePending;
+  const visibleAmount = visiblePending.reduce((sum, row) => sum + row.amount, 0);
 
   const ready = Boolean(internalFile && cajuFile);
 
@@ -224,8 +271,11 @@ export function ReconciliationTab() {
           <section className="approval-stats">
             <div className="approval-stat approval-stat-danger">
               <span>Notas pendentes</span>
-              <strong>{result.totals.pending}</strong>
-              <small>{money(result.totals.pendingAmount)} a cobrar</small>
+              <strong>{visiblePending.length}</strong>
+              <small>
+                {money(visibleAmount)} a cobrar
+                {hiddenCount > 0 ? ` · ${hiddenCount} oculta(s)` : ""}
+              </small>
             </div>
             <div className="approval-stat approval-stat-success">
               <span>Conciliadas</span>
@@ -281,16 +331,29 @@ export function ReconciliationTab() {
 
           <section className="section">
             <div className="section-header">
-              <h2>Notas pendentes ({result.totals.pending})</h2>
-              <button
-                className="button secondary"
-                type="button"
-                onClick={() => void exportMissingNotes()}
-                disabled={result.pending.length === 0 || exporting}
-              >
-                <FileDown size={16} />
-                {exporting ? "Gerando PDF..." : "Exportar Notas Faltantes"}
-              </button>
+              <h2>Notas pendentes ({visiblePending.length})</h2>
+              <div className="toolbar">
+                {hiddenCount > 0 ? (
+                  <button
+                    className="button ghost"
+                    type="button"
+                    onClick={() => setShowHidden((current) => !current)}
+                    aria-pressed={showHidden}
+                  >
+                    <Eye size={16} />
+                    {showHidden ? "Esconder ocultas" : `Mostrar ocultas (${hiddenCount})`}
+                  </button>
+                ) : null}
+                <button
+                  className="button secondary"
+                  type="button"
+                  onClick={() => void exportMissingNotes()}
+                  disabled={visiblePending.length === 0 || exporting}
+                >
+                  <FileDown size={16} />
+                  {exporting ? "Gerando PDF..." : "Exportar Notas Faltantes"}
+                </button>
+              </div>
             </div>
 
             {result.totals.pending === 0 ? (
@@ -301,6 +364,13 @@ export function ReconciliationTab() {
                 <span className="muted">
                   Todas as {result.totals.cajuPurchases} compras do cartão têm lançamento
                   correspondente no sistema interno.
+                </span>
+              </div>
+            ) : listedPending.length === 0 ? (
+              <div className="panel pad">
+                <span className="muted">
+                  Todas as {hiddenCount} nota(s) pendentes estão ocultas. Use &quot;Mostrar
+                  ocultas&quot; para revê-las.
                 </span>
               </div>
             ) : (
@@ -316,10 +386,11 @@ export function ReconciliationTab() {
                         <th>Mesmo valor no interno</th>
                         <th>Comprovante</th>
                         <th className="amount">Valor</th>
+                        <th>Ação</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {result.pending.map((row) => (
+                      {listedPending.map((row) => (
                         <tr key={`${row.rowNumber}-${row.amount}`}>
                           <td>{row.date ? shortDate(row.date) : "-"}</td>
                           <td>{row.merchant || "-"}</td>
@@ -343,6 +414,24 @@ export function ReconciliationTab() {
                           </td>
                           <td className="amount">
                             <Money value={row.amount} />
+                          </td>
+                          <td>
+                            <button
+                              className="button ghost"
+                              type="button"
+                              onClick={() => toggleHidden(row.rowNumber)}
+                              aria-pressed={hiddenRows.has(row.rowNumber)}
+                            >
+                              {hiddenRows.has(row.rowNumber) ? (
+                                <>
+                                  <Eye size={14} /> Reexibir
+                                </>
+                              ) : (
+                                <>
+                                  <EyeOff size={14} /> Ocultar
+                                </>
+                              )}
+                            </button>
                           </td>
                         </tr>
                       ))}

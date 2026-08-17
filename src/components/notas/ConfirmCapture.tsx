@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type ConfirmCaptureProps = {
   files: File[];
@@ -22,9 +22,27 @@ export function ConfirmCapture({
   onCancel,
 }: ConfirmCaptureProps) {
   const [description, setDescription] = useState("");
-  const previewUrls = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
 
-  useEffect(() => () => previewUrls.forEach((url) => URL.revokeObjectURL(url)), [previewUrls]);
+  /**
+   * As URLs nascem DENTRO do efeito, e nao num useMemo lido pelo cleanup.
+   * Com useMemo a previa aparecia quebrada: o StrictMode remonta o componente
+   * (setup -> cleanup -> setup), o cleanup revogava as URLs e o segundo setup
+   * nao recriava nada, porque o memo nao roda de novo numa remontagem
+   * simulada — o src no DOM ficava apontando para um blob ja revogado. Criando
+   * aqui, cada setup gera URLs novas e revoga exatamente as suas.
+   */
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    const urls = files.map((file) => URL.createObjectURL(file));
+    /* Criar o object URL fora do efeito e o que causava a previa quebrada:
+       qualquer revogacao no cleanup exige que o setup seguinte recrie a URL,
+       senao a remontagem do StrictMode deixa o src apontando para um blob ja
+       revogado. E a orientacao do proprio React para object URL. */
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPreviewUrls(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [files]);
 
   const single = files.length === 1;
   const confirmLabel = busy
@@ -38,7 +56,9 @@ export function ConfirmCapture({
   return (
     <section className="notas-confirm panel pad" aria-labelledby="confirm-capture-title">
       <h2 id="confirm-capture-title">{single ? "Confira a foto" : `Confira as ${files.length} fotos`}</h2>
-      {single ? (
+      {/* No primeiro render as URLs ainda nao existem (nascem no efeito); sem a
+          guarda, seria um <img> sem src piscando o icone de imagem quebrada. */}
+      {previewUrls.length === 0 ? null : single ? (
         <img className="notas-preview" src={previewUrls[0]} alt="Prévia da nota capturada" />
       ) : (
         <ul className="notas-preview-grid">

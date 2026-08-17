@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { ArrowLeft, RefreshCw } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { FormEvent, useCallback, useRef, useState } from "react";
 import { useFetchData } from "@/components/panel/useFetchData";
 import { dateTime, userStatusLabels } from "@/lib/format";
 
@@ -42,6 +42,8 @@ type HistoryResponse = {
   nextCursor: string | null;
 };
 
+type HistoryFilters = { from: string; to: string };
+
 function collaboratorStatusLabel(status: string) {
   return userStatusLabels[status as keyof typeof userStatusLabels] ?? status;
 }
@@ -76,10 +78,17 @@ export function NotasColaboradoresTab() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [draftHistoryFilters, setDraftHistoryFilters] = useState<HistoryFilters>({ from: "", to: "" });
+  const [historyFilters, setHistoryFilters] = useState<HistoryFilters>({ from: "", to: "" });
   const historyRequest = useRef(0);
   const collaborators = data?.collaborators ?? [];
 
-  const loadHistory = useCallback(async (id: string, cursor: string | null, append: boolean) => {
+  const loadHistory = useCallback(async (
+    id: string,
+    cursor: string | null,
+    append: boolean,
+    filters: HistoryFilters,
+  ) => {
     const requestId = ++historyRequest.current;
     if (append) setLoadingMore(true);
     else {
@@ -90,6 +99,8 @@ export function NotasColaboradoresTab() {
 
     const search = new URLSearchParams({ take: "30" });
     if (cursor) search.set("cursor", cursor);
+    if (filters.from) search.set("from", filters.from);
+    if (filters.to) search.set("to", filters.to);
 
     try {
       const response = await fetch(`/api/notas/colaboradores/${encodeURIComponent(id)}?${search}`);
@@ -121,7 +132,20 @@ export function NotasColaboradoresTab() {
 
   function openHistory(collaborator: Collaborator) {
     setSelected(collaborator);
-    void loadHistory(collaborator.id, null, false);
+    void loadHistory(collaborator.id, null, false, historyFilters);
+  }
+
+  function applyHistoryFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHistoryFilters(draftHistoryFilters);
+    void loadHistory(selected!.id, null, false, draftHistoryFilters);
+  }
+
+  function clearHistoryFilters() {
+    const emptyFilters = { from: "", to: "" };
+    setDraftHistoryFilters(emptyFilters);
+    setHistoryFilters(emptyFilters);
+    void loadHistory(selected!.id, null, false, emptyFilters);
   }
 
   function closeHistory() {
@@ -149,6 +173,41 @@ export function NotasColaboradoresTab() {
             <ArrowLeft size={16} /> Voltar à lista
           </button>
         </div>
+
+        <form className="panel pad toolbar" onSubmit={applyHistoryFilters}>
+          <div className="field">
+            <label htmlFor="collaborator-notes-from">De</label>
+            <input
+              className="input"
+              id="collaborator-notes-from"
+              type="date"
+              value={draftHistoryFilters.from}
+              onChange={(event) => setDraftHistoryFilters({
+                ...draftHistoryFilters,
+                from: event.target.value,
+              })}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="collaborator-notes-to">Até</label>
+            <input
+              className="input"
+              id="collaborator-notes-to"
+              type="date"
+              value={draftHistoryFilters.to}
+              onChange={(event) => setDraftHistoryFilters({
+                ...draftHistoryFilters,
+                to: event.target.value,
+              })}
+            />
+          </div>
+          <div className="form-actions">
+            <button className="button" type="submit">Aplicar</button>
+            <button className="button ghost" type="button" onClick={clearHistoryFilters}>
+              Limpar
+            </button>
+          </div>
+        </form>
 
         {historyError ? <div className="alert error" role="alert">{historyError}</div> : null}
         {historyLoading ? <div className="panel pad" role="status">Carregando notas...</div> : null}
@@ -206,7 +265,7 @@ export function NotasColaboradoresTab() {
                   className="button secondary"
                   type="button"
                   disabled={loadingMore}
-                  onClick={() => void loadHistory(selected.id, history.nextCursor, true)}
+                  onClick={() => void loadHistory(selected.id, history.nextCursor, true, historyFilters)}
                 >
                   {loadingMore ? "Carregando..." : "Carregar mais notas"}
                 </button>

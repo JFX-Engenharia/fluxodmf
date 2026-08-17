@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 import type { NotaRecord, NotaStatus } from "@/lib/notas-db";
 
 export type ServerNotaRecord = {
@@ -21,6 +21,11 @@ export type NotaListRecord = NotaRecord | ServerNotaRecord;
 
 type NotaListProps = {
   records: NotaListRecord[];
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+  onClearFilters: () => void;
   onRetry: (id: string) => void;
   onDelete: (id: string) => void;
 };
@@ -43,27 +48,76 @@ function isServerRecord(record: NotaListRecord): record is ServerNotaRecord {
   return "source" in record && record.source === "server";
 }
 
-export function NotaList({ records, onRetry, onDelete }: NotaListProps) {
-  const urls = useMemo(
-    () => new Map(
+export function NotaList({
+  records,
+  from,
+  to,
+  onFromChange,
+  onToChange,
+  onClearFilters,
+  onRetry,
+  onDelete,
+}: NotaListProps) {
+  /**
+   * Mesmo cuidado do ConfirmCapture: as URLs nascem dentro do efeito. Com
+   * useMemo, o cleanup do StrictMode revoga o que o segundo setup nao recria, e
+   * a miniatura quebra. Aqui isso ainda nao acontecia por acidente — a lista
+   * monta com records vazio, logo nao ha URL para revogar na remontagem — mas
+   * bastaria ela passar a montar ja com registros para os thumbs das fotos nao
+   * enviadas quebrarem do mesmo jeito.
+   */
+  const [urls, setUrls] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const created = new Map(
       records
         .filter((record): record is NotaRecord => !isServerRecord(record))
         .map((record) => [record.id, URL.createObjectURL(record.thumb)]),
-    ),
-    [records],
-  );
-
-  useEffect(() => () => urls.forEach((url) => URL.revokeObjectURL(url)), [urls]);
-
-  if (records.length === 0) {
-    return <p className="notas-empty">As fotos que você tirar aparecerão aqui.</p>;
-  }
+    );
+    /* Mesma razao do ConfirmCapture: a URL precisa nascer no setup para
+       sobreviver ao ciclo setup -> cleanup -> setup da remontagem. */
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUrls(created);
+    return () => created.forEach((url) => URL.revokeObjectURL(url));
+  }, [records]);
 
   return (
     <section className="notas-list" aria-labelledby="notas-list-title">
       <h2 id="notas-list-title">Suas fotos</h2>
-      <div className="notas-cards">
-        {records.map((record) => {
+      <div className="panel pad toolbar">
+        <div className="field">
+          <label htmlFor="notas-from">De</label>
+          <input
+            className="input"
+            id="notas-from"
+            type="date"
+            value={from}
+            onChange={(event) => onFromChange(event.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="notas-to">Até</label>
+          <input
+            className="input"
+            id="notas-to"
+            type="date"
+            value={to}
+            onChange={(event) => onToChange(event.target.value)}
+          />
+        </div>
+        <div className="form-actions">
+          <button className="button ghost" type="button" onClick={onClearFilters}>
+            Limpar
+          </button>
+        </div>
+      </div>
+      {records.length === 0 ? (
+        <p className="notas-empty">
+          {from || to ? "Nenhuma foto neste período." : "As fotos que você tirar aparecerão aqui."}
+        </p>
+      ) : (
+        <div className="notas-cards">
+          {records.map((record) => {
           const serverRecord = isServerRecord(record);
           const status = statusText[record.status];
           return (
@@ -97,8 +151,9 @@ export function NotaList({ records, onRetry, onDelete }: NotaListProps) {
               </div>
             </article>
           );
-        })}
-      </div>
+          })}
+        </div>
+      )}
     </section>
   );
 }

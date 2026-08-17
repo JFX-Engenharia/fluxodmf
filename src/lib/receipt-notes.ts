@@ -54,16 +54,23 @@ export function serializeReceiptNote(note: ReceiptNoteRow) {
 export const DEFAULT_PAGE_SIZE = 30;
 export const MAX_PAGE_SIZE = 100;
 
-export const noteListQuerySchema = z.object({
-  cursor: z.string().min(1).optional(),
-  take: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(MAX_PAGE_SIZE, `Peça no máximo ${MAX_PAGE_SIZE} notas por página.`)
-    .optional()
-    .default(DEFAULT_PAGE_SIZE),
-});
+export const noteListQuerySchema = z
+  .object({
+    cursor: z.string().min(1).optional(),
+    take: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_PAGE_SIZE, `Peça no máximo ${MAX_PAGE_SIZE} notas por página.`)
+      .optional()
+      .default(DEFAULT_PAGE_SIZE),
+    from: z.string().date().optional(),
+    to: z.string().date().optional(),
+  })
+  .refine(
+    (filters) => !filters.from || !filters.to || filters.from <= filters.to,
+    { message: "A data inicial deve ser anterior à data final.", path: ["to"] },
+  );
 
 /**
  * Pagina o historico de um colaborador por cursor. Ordena por createdAt e
@@ -71,9 +78,22 @@ export const noteListQuerySchema = z.object({
  * quando a fila offline despeja varias de uma vez — poderiam repetir ou sumir
  * entre as paginas.
  */
-export async function listReceiptNotes(input: { userId: string; cursor?: string; take: number }) {
+export async function listReceiptNotes(input: {
+  userId: string;
+  cursor?: string;
+  take: number;
+  from?: string;
+  to?: string;
+}) {
+  const capturedAt = input.from || input.to
+    ? {
+        ...(input.from ? { gte: new Date(`${input.from}T00:00:00.000Z`) } : {}),
+        ...(input.to ? { lte: new Date(`${input.to}T23:59:59.999Z`) } : {}),
+      }
+    : undefined;
+
   const rows = await prisma.receiptNote.findMany({
-    where: { userId: input.userId },
+    where: { userId: input.userId, capturedAt },
     select: RECEIPT_NOTE_LIST_SELECT,
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     // Uma linha a mais que o pedido: e assim que se sabe se existe proxima
