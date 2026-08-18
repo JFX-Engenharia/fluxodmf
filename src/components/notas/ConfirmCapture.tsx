@@ -5,6 +5,9 @@
 import { useEffect, useState } from "react";
 import { CaptureButton } from "@/components/notas/CaptureButton";
 
+/** Espelha o minimo do servidor (POST /api/notas): as duas pontas recusam igual. */
+const MIN_DESCRIPTION = 3;
+
 type ConfirmCaptureProps = {
   files: File[];
   busy?: boolean;
@@ -56,6 +59,11 @@ export function ConfirmCapture({
       ? "Enviar"
       : `Enviar ${files.length} fotos`;
 
+  const descricao = description.trim();
+  // Campo obrigatorio que aceita um caractere vira ritual: a pessoa digita "x"
+  // so para passar da tela e o escritorio continua sem saber do que e a nota.
+  const descricaoValida = descricao.length >= MIN_DESCRIPTION;
+
   return (
     <section className="notas-confirm panel pad" aria-labelledby="confirm-capture-title">
       <h2 id="confirm-capture-title">{single ? "Confira a foto" : `Confira as ${files.length} fotos`}</h2>
@@ -82,18 +90,29 @@ export function ConfirmCapture({
         </ul>
       )}
       <label className="field" htmlFor="nota-description">
-        <span>{single ? "Descrição (opcional)" : "Descrição destas fotos (opcional)"}</span>
+        <span>{single ? "O que você comprou?" : "O que você comprou nestas fotos?"}</span>
         <textarea
           className="textarea"
           id="nota-description"
           maxLength={500}
+          required
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Ex.: almoço, combustível..."
         />
+        {descricao.length > 0 && !descricaoValida ? (
+          <small className="muted">Escreva um pouco mais para o escritório entender.</small>
+        ) : null}
       </label>
       <div className="button-row notas-confirm-actions">
-        <button className="button" type="button" disabled={busy} onClick={() => onConfirm(files, description.trim())}>
+        <button
+          className="button"
+          type="button"
+          /* O botao e type=button com onClick, entao o `required` do textarea
+             nao barra nada sozinho: a trava real e esta. */
+          disabled={busy || !descricaoValida}
+          onClick={() => onConfirm(files, descricao)}
+        >
           {confirmLabel}
         </button>
         <CaptureButton compact disabled={busy} onCapture={onAddFiles} />

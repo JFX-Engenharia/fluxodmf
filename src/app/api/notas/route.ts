@@ -38,12 +38,17 @@ const allowedMimeTypes = new Set<string>(ACCEPTED_MIME_TYPES);
 const MISSING_OWNER_MESSAGE = "Envio sem identificação da conta de origem.";
 
 const createSchema = z.object({
+  /**
+   * Obrigatoria: sem ela o painel recebe a foto da nota sem saber do que se
+   * trata e precisa abrir a imagem para descobrir. O minimo de 3 espelha o do
+   * cliente (MIN_DESCRIPTION em ConfirmCapture) — um campo obrigatorio que
+   * aceita um caractere nao informa nada, so cria ritual.
+   */
   description: z
     .string()
     .trim()
-    .max(500, "A descrição pode ter no máximo 500 caracteres.")
-    .optional()
-    .default(""),
+    .min(3, "Escreva o que você comprou.")
+    .max(500, "A descrição pode ter no máximo 500 caracteres."),
   capturedAt: z.string().optional(),
   /**
    * Dono da foto no momento da captura, gravado na fila offline. Sem formato

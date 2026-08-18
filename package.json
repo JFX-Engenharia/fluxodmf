@@ -18,6 +18,7 @@
     "check:file-signature": "tsx --env-file-if-exists=.env scripts/check-file-signature.ts",
     "check:imports": "tsx --env-file-if-exists=.env scripts/check-imports.ts",
     "check:payment-batch": "tsx --env-file-if-exists=.env scripts/check-payment-batch.ts",
+    "cleanup:notas": "tsx --env-file-if-exists=.env scripts/cleanup-notas-sem-descricao.ts",
     "check:body-size": "tsx --env-file-if-exists=.env scripts/check-body-size.ts",
     "check:migration": "node scripts/check-migration.mjs",
     "prisma:generate": "prisma generate",

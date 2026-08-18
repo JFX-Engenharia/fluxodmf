@@ -1,7 +1,12 @@
 const HTML_CACHE = "notas-html-v1";
 const STATIC_CACHE = "notas-static";
 const DB_NAME = "fluxo-notas";
-const DB_VERSION = 2;
+// DUPLICADO de src/lib/notas-db.ts de proposito: o service worker nao importa
+// modulo. Os dois abrem o mesmo banco, entao este numero tem que subir JUNTO —
+// versionar so um lado dispara onblocked e derruba a conexao do outro.
+// A migracao em si (limpar fila sem descricao) roda de um lado so, o que abrir
+// primeiro; aqui basta acompanhar a versao.
+const DB_VERSION = 3;
 const STORE_NAME = "queue";
 const STUCK_SENDING_MS = 2 * 60 * 1000;
 
@@ -106,13 +111,29 @@ self.addEventListener("fetch", (event) => {
 function openDatabase() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const database = request.result;
       const store = database.objectStoreNames.contains(STORE_NAME)
         ? request.transaction.objectStore(STORE_NAME)
         : database.createObjectStore(STORE_NAME, { keyPath: "id" });
       if (!store.indexNames.contains("createdAt")) store.createIndex("createdAt", "createdAt");
       if (!store.indexNames.contains("status")) store.createIndex("status", "status");
+
+      // A MESMA limpeza de src/lib/notas-db.ts, e nao um espelho decorativo:
+      // quem dispara o upgrade e quem abrir o banco primeiro. Se o Background
+      // Sync chegar antes da pagina e so este lado subisse a versao, a fila
+      // sem descricao sobreviveria e a pagina nunca mais rodaria a migracao —
+      // as fotos ficariam presas em 400 permanente.
+      if (event.oldVersion > 0 && event.oldVersion < 3) {
+        const cursorRequest = store.openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return;
+          const record = cursor.value;
+          if (!record || !record.description || !String(record.description).trim()) cursor.delete();
+          cursor.continue();
+        };
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("IndexedDB indisponível"));

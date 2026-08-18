@@ -1,5 +1,14 @@
 const DB_NAME = "fluxo-notas";
-const DB_VERSION = 2;
+/**
+ * v3: a descricao virou obrigatoria. As fotos ja enfileiradas com descricao
+ * vazia seriam recusadas pelo servidor (400 -> erro permanente) e ficariam num
+ * laco — o "Tentar de novo" reenviaria o mesmo texto vazio, e nao existe tela
+ * para editar a descricao de um registro da fila. Entao a migracao as remove.
+ *
+ * ESTE NUMERO E DUPLICADO EM public/sw.js: os dois abrem o mesmo banco, e
+ * versionar so um lado dispara onblocked e derruba a conexao do outro.
+ */
+const DB_VERSION = 3;
 const STORE_NAME = "queue";
 const STUCK_SENDING_MS = 2 * 60 * 1000;
 const SENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -48,7 +57,7 @@ function openDatabase(): Promise<IDBDatabase> {
   dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const database = request.result;
       const store = database.objectStoreNames.contains(STORE_NAME)
         ? request.transaction?.objectStore(STORE_NAME)
@@ -57,6 +66,20 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!store) return;
       if (!store.indexNames.contains("createdAt")) store.createIndex("createdAt", "createdAt");
       if (!store.indexNames.contains("status")) store.createIndex("status", "status");
+
+      // Passada unica de migracao. O resto deste handler e idempotente e roda a
+      // cada upgrade; esta limpeza NAO pode, senao apagaria fila legitima no dia
+      // em que a versao subir de novo por outro motivo.
+      if (event.oldVersion > 0 && event.oldVersion < 3) {
+        const cursorRequest = store.openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return;
+          const record = cursor.value as Partial<NotaRecord> | undefined;
+          if (!record?.description || !record.description.trim()) cursor.delete();
+          cursor.continue();
+        };
+      }
     };
 
     request.onsuccess = () => {
