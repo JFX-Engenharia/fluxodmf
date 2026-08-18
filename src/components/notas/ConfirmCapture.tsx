@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useState } from "react";
+import { CaptureButton } from "@/components/notas/CaptureButton";
 
 type ConfirmCaptureProps = {
   files: File[];
@@ -10,6 +11,7 @@ type ConfirmCaptureProps = {
   progress?: { done: number; total: number } | null;
   onConfirm: (files: File[], description: string) => void;
   onRemove: (index: number) => void;
+  onAddFiles: (files: File[]) => void;
   onCancel: () => void;
 };
 
@@ -19,6 +21,7 @@ export function ConfirmCapture({
   progress = null,
   onConfirm,
   onRemove,
+  onAddFiles,
   onCancel,
 }: ConfirmCaptureProps) {
   const [description, setDescription] = useState("");
@@ -93,8 +96,9 @@ export function ConfirmCapture({
         <button className="button" type="button" disabled={busy} onClick={() => onConfirm(files, description.trim())}>
           {confirmLabel}
         </button>
-        <button className="button secondary" type="button" disabled={busy} onClick={onCancel}>
-          {single ? "Tirar outra" : "Escolher outras"}
+        <CaptureButton compact disabled={busy} onCapture={onAddFiles} />
+        <button className="button ghost" type="button" disabled={busy} onClick={onCancel}>
+          Descartar
         </button>
       </div>
     </section>

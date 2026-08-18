@@ -409,13 +409,17 @@ export function NotasShell({ ownerId }: NotasShellProps) {
       return;
     }
     setNotice("");
-    if (files.length > MAX_BATCH) {
-      setCapture([]);
-      setError(`Você pode enviar até ${MAX_BATCH} fotos por vez. Escolha menos fotos e repita depois.`);
+    const remaining = MAX_BATCH - capture.length;
+    if (files.length > remaining) {
+      setError(
+        remaining === 0
+          ? `Este lote já tem ${MAX_BATCH} fotos. Envie ou descarte antes de tirar outra.`
+          : `Você já separou ${capture.length} foto(s). Pode acrescentar só mais ${remaining} agora.`,
+      );
       return;
     }
     setError("");
-    setCapture(files);
+    setCapture((current) => [...current, ...files]);
   }
 
   async function confirmCapture(files: File[], description: string) {
@@ -546,6 +550,7 @@ export function NotasShell({ ownerId }: NotasShellProps) {
           progress={progress}
           onConfirm={confirmCapture}
           onRemove={(index) => setCapture((current) => current.filter((_, i) => i !== index))}
+          onAddFiles={startCapture}
           onCancel={() => setCapture([])}
         />
       )}

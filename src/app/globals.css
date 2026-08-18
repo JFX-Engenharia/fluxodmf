@@ -704,6 +704,9 @@ textarea:disabled {
   display: grid;
   place-items: center;
   align-content: center;
+  /* Separa o botao gigante do link da galeria: colados, o segundo parece
+     legenda do primeiro em vez de uma acao propria. */
+  gap: 12px;
 }
 
 .notas-capture-button {
@@ -743,6 +746,27 @@ textarea:disabled {
 
 .notas-capture-button small {
   opacity: 0.9;
+}
+
+/* Caminho secundario, para quem ja fotografou a nota antes de abrir o app. E
+   discreto de proposito — a camera e a acao principal — mas precisa PARECER
+   tocavel e ter area de toque de dedo: texto cinza sem afordancia passa
+   despercebido no celular de quem esta na obra. */
+.notas-gallery-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.notas-gallery-link:focus-within {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-card);
 }
 
 .notas-file-input {
