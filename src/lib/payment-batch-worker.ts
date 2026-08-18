@@ -25,10 +25,9 @@ import {
 } from "@/lib/payment-actions";
 
 /**
- * Menor que os 100 do import de proposito: aqui a transacao segura
- * SELECT ... FOR UPDATE em linhas de Payment, e um bloco grande prenderia esses
- * locks por tempo demais — quem estivesse aprovando um pagamento pela tela
- * ficaria esperando o lote inteiro.
+ * Granularidade de leitura e auditoria, nao de transacao: cada pagamento e
+ * aplicado na sua propria transacao, entao o bloco so dita o tamanho do
+ * findMany e do auditLogMany.
  */
 const CHUNK_SIZE = 25;
 const STALE_AFTER_MS = 15 * 60_000;
@@ -163,38 +162,36 @@ export async function processPaymentBatch(jobId: string): Promise<void> {
       });
       const byId = new Map(payments.map((payment) => [payment.id, payment]));
 
-      const chunkResults: BatchItemResult[] = [];
       const chunkAudits: Parameters<typeof auditLogMany>[0] = [];
 
-      await prisma.$transaction(async (tx) => {
-        // Zerado a cada tentativa da transacao: se o Prisma reexecutar o bloco,
-        // o que foi coletado antes nao pode ser contado duas vezes.
-        chunkResults.length = 0;
-        chunkAudits.length = 0;
-
-        for (const id of chunkIds) {
-          const payment = byId.get(id);
-          if (!payment) {
-            chunkResults.push({ paymentId: id, ok: false, error: "Pagamento não encontrado." });
-            continue;
-          }
-
+      for (const id of chunkIds) {
+        const payment = byId.get(id);
+        let result: BatchItemResult;
+        if (!payment) {
+          result = { paymentId: id, ok: false, error: "Pagamento não encontrado." };
+        } else {
           try {
             assertPaymentAcceptsAction(payment, action);
-            const outcome = await applyPaymentAction({
-              tx,
-              payment,
-              actor,
-              input,
-              effectiveReason,
-              approvalRules,
-            });
-            chunkResults.push({
+            // Uma transacao POR pagamento: o SELECT ... FOR UPDATE de
+            // applyPaymentAction dura milissegundos em vez de prender um bloco
+            // inteiro de linhas — nem estoura o timeout do Prisma em lotes
+            // grandes, nem faz quem aprova pela tela esperar o lote.
+            const outcome = await prisma.$transaction((tx) =>
+              applyPaymentAction({
+                tx,
+                payment,
+                actor,
+                input,
+                effectiveReason,
+                approvalRules,
+              }),
+            );
+            result = {
               paymentId: id,
               ok: true,
               supplierName: payment.supplierName,
               status: outcome.newStatus,
-            });
+            };
             chunkAudits.push({
               actorId: actor.id,
               event: "PAGAMENTO_ACAO",
@@ -204,36 +201,38 @@ export async function processPaymentBatch(jobId: string): Promise<void> {
             });
           } catch (error) {
             // Falha parcial e requisito: um lote heterogeneo aprova o que a
-            // alcada permite e recusa o resto, com o motivo de cada recusa.
-            //
-            // ATENCAO: a recusa nao pode abortar a transacao do bloco. Como
-            // nenhuma escrita acontece antes da validacao falhar, o que ja foi
-            // gravado neste bloco continua valido.
-            chunkResults.push({
+            // alcada permite e recusa o resto, com o motivo de cada recusa. A
+            // falha desfaz apenas a transacao DESTE pagamento; os demais nao
+            // sao afetados.
+            result = {
               paymentId: id,
               ok: false,
               supplierName: payment.supplierName,
               error: messageFrom(error),
-            });
+            };
           }
         }
-      });
 
-      // Fora da transacao do bloco: auditoria e progresso nao devem prender o
-      // lock das linhas de Payment.
+        // Progresso gravado por pagamento: com commits individuais, um item
+        // aplicado mas sem resultado persistido seria reaplicado na retomada
+        // (PaymentAction duplicado). Assim a janela de reaplicacao e de no
+        // maximo 1 pagamento.
+        settled.set(result.paymentId, result);
+        const allResults = [...settled.values()];
+        await prisma.paymentBatchAction.update({
+          where: { id: job.id },
+          data: {
+            results: JSON.stringify(allResults),
+            processedCount: allResults.length,
+            successCount: allResults.filter((item) => item.ok).length,
+            failedCount: allResults.filter((item) => !item.ok).length,
+          },
+        });
+      }
+
+      // Fora de transacao e em massa por bloco, como sempre foi: auditoria nao
+      // deve prender lock nem custar um INSERT por pagamento.
       await auditLogMany(chunkAudits);
-
-      for (const result of chunkResults) settled.set(result.paymentId, result);
-      const allResults = [...settled.values()];
-      await prisma.paymentBatchAction.update({
-        where: { id: job.id },
-        data: {
-          results: JSON.stringify(allResults),
-          processedCount: allResults.length,
-          successCount: allResults.filter((item) => item.ok).length,
-          failedCount: allResults.filter((item) => !item.ok).length,
-        },
-      });
     }
 
     const finalResults = [...settled.values()];

@@ -20,7 +20,15 @@ if (globalForPrisma.prisma && globalForPrisma.prismaRuntimeVersion !== PRISMA_RU
   globalForPrisma.prisma = undefined;
 }
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter,
+    // Rede de seguranca: sob latencia de producao, os 5 s default do Prisma nao
+    // bastam nem para transacoes normais. Pontos sabidamente longos (workers,
+    // rotas admin de volume arbitrario) passam timeout proprio na chamada.
+    transactionOptions: { maxWait: 5_000, timeout: 15_000 },
+  });
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;

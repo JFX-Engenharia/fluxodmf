@@ -245,6 +245,8 @@ export async function processImportTask(batchId: string): Promise<void> {
 
     for (let offset = 0; offset < rowsToProcess.length; offset += CHUNK_SIZE) {
       const chunk = rowsToProcess.slice(offset, offset + CHUNK_SIZE);
+      // Poucos statements, mas grandes (ate 100 linhas cada): sob latencia de
+      // producao os 15 s globais podem nao bastar.
       await prisma.$transaction(async (tx) => {
         const payments = await tx.payment.createManyAndReturn({
           data: chunk.map((row) => ({
@@ -304,7 +306,7 @@ export async function processImportTask(batchId: string): Promise<void> {
             importedRows: { increment: payments.length },
           },
         });
-      });
+      }, { timeout: 30_000, maxWait: 10_000 });
     }
 
     const importedRows = await prisma.payment.count({ where: { importBatchId: batch.id } });
@@ -348,7 +350,7 @@ export async function processImportTask(batchId: string): Promise<void> {
         },
       });
       return { dailyFlow };
-    });
+    }, { timeout: 30_000, maxWait: 10_000 });
 
     const amount = await prisma.payment.aggregate({
       where: { importBatchId: batch.id },

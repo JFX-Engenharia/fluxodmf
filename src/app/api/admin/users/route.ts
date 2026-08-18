@@ -350,6 +350,8 @@ export async function DELETE(request: Request) {
         receiptNotes >
       0
     ) {
+      // Reatribui o historico inteiro do usuario; o volume e arbitrario e o
+      // default global de 15 s pode nao bastar.
       await prisma.$transaction(async (tx) => {
         const sentinel = await ensureRemovedUserSentinel(tx);
 
@@ -386,7 +388,7 @@ export async function DELETE(request: Request) {
           data: { userId: sentinel.id },
         });
         await tx.user.delete({ where: { id: target.id } });
-      });
+      }, { timeout: 60_000, maxWait: 10_000 });
 
       await auditLog({
         actorId: actor.id,

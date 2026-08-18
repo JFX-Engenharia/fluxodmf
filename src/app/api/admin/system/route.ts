@@ -186,6 +186,7 @@ export async function POST(request: Request) {
       actorId: actor.id,
       execute: async () => {
 
+    // Operacao rara sobre tabelas inteiras; o default global de 15 s nao basta.
     const result = await prisma.$transaction(async (tx) => {
       const paymentRequestApprovals = await tx.paymentRequestApproval.deleteMany();
       const paymentRequestAttachments = await tx.paymentRequestAttachment.deleteMany();
@@ -227,7 +228,7 @@ export async function POST(request: Request) {
         workApprovers: workApprovers.count,
         works: works.count,
       };
-    });
+    }, { timeout: 60_000, maxWait: 10_000 });
 
     await auditLog({
       actorId: actor.id,

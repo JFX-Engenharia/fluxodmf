@@ -104,6 +104,8 @@ export async function DELETE(request: Request) {
       scope: "audit:clear",
       actorId: actor.id,
       execute: async () => {
+        // deleteMany da tabela inteira; o default global de 15 s pode nao
+        // bastar com auditoria acumulada.
         const deleted = await prisma.$transaction(async (tx) => {
           const result = await tx.auditLog.deleteMany();
           await tx.auditLog.create({
@@ -115,7 +117,7 @@ export async function DELETE(request: Request) {
             },
           });
           return result.count;
-        });
+        }, { timeout: 60_000, maxWait: 10_000 });
         return ok({ deleted });
       },
     });

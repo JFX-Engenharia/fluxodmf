@@ -84,6 +84,8 @@ export async function POST(request: Request) {
       scope: "system:restore",
       actorId: actor.id,
       execute: async () => {
+        // Operacao rara sobre um backup de tamanho arbitrario; o default
+        // global de 15 s nao basta.
         const counts = await prisma.$transaction(async (tx) => {
           await tx.paymentRequestApproval.deleteMany();
           await tx.paymentRequestAttachment.deleteMany();
@@ -136,7 +138,7 @@ export async function POST(request: Request) {
             requests: backup.data.paymentRequests.length,
             advances: backup.data.advances.length,
           };
-        });
+        }, { timeout: 120_000, maxWait: 10_000 });
         await auditLog({ actorId: actor.id, event: "BACKUP_RESTAURADO", entity: "SystemBackup", metadata: counts });
         return ok({ restored: counts });
       },
