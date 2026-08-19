@@ -310,6 +310,13 @@ export async function processImportTask(batchId: string): Promise<void> {
           data: {
             processedRows: { increment: chunk.length },
             importedRows: { increment: payments.length },
+            // Batida de coracao, escrita na mesma linha do progresso: nao custa
+            // consulta nenhuma e muda o sentido de "parado". Sem ela,
+            // STALE_AFTER_MS conta desde o INICIO, e uma planilha grande que
+            // ainda esta importando seria considerada abandonada aos 15
+            // minutos — dois workers no mesmo lote. Com ela, parado passa a ser
+            // o que realmente importa: 15 minutos SEM progresso.
+            startedAt: new Date(),
           },
         });
       }, { timeout: 30_000, maxWait: 10_000 });

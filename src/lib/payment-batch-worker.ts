@@ -232,6 +232,13 @@ export async function processPaymentBatch(jobId: string): Promise<void> {
             processedCount: allResults.length,
             successCount: allResults.filter((item) => item.ok).length,
             failedCount: allResults.filter((item) => !item.ok).length,
+            // Batida de coracao, escrita na mesma linha do progresso: nao custa
+            // consulta nenhuma e muda o sentido de "parado". Sem ela,
+            // STALE_AFTER_MS conta desde o INICIO, e um lote grande que ainda
+            // esta trabalhando seria considerado abandonado aos 15 minutos —
+            // dois workers no mesmo job. Com ela, parado passa a ser o que
+            // realmente importa: 15 minutos SEM progresso.
+            startedAt: new Date(),
           },
         });
       }

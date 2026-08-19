@@ -55,6 +55,10 @@ export async function GET() {
     for (const task of tasks) {
       // `startedAt` nulo em PROCESSANDO nao existe na pratica (o claim grava os
       // dois juntos), e o `lt` do worker tambem nao casaria com nulo.
+      // FALHOU fica DE FORA de proposito, embora o claim o aceite: a falha
+      // costuma ser deterministica (planilha invalida, por exemplo), e
+      // redisparar sozinho a cada polling viraria um laco que repete o mesmo
+      // erro para sempre. Quem retoma uma importacao que falhou e o operador.
       const abandonada =
         (task.status === ImportStatus.PENDENTE && task.createdAt < stalePendingBefore) ||
         (task.status === ImportStatus.PROCESSANDO &&

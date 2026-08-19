@@ -126,6 +126,10 @@ export async function GET() {
       // `startedAt` nulo em PROCESSANDO nao existe na pratica (o claim grava os
       // dois juntos), e o `lt` do worker tambem nao casaria com nulo — sem esta
       // guarda o redisparo seria uma chamada morta.
+      // FALHOU fica DE FORA de proposito, embora o claim o aceite: a falha
+      // costuma ser deterministica, e redisparar sozinho a cada polling viraria
+      // um laco que repete o mesmo erro para sempre. Quem retoma um lote que
+      // falhou e o operador, mandando de novo pela tela.
       const abandonado =
         (job.status === ImportStatus.PENDENTE && job.createdAt < stalePendingBefore) ||
         (job.status === ImportStatus.PROCESSANDO &&
