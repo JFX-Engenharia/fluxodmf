@@ -85,19 +85,43 @@ function resolveCapturedAt(value: string | undefined, now: Date) {
 
 /**
  * Violacao do UNIQUE de `clientKey`. P2002 e o codigo do Prisma para conflito de
- * chave unica; o `target` distingue esta coluna de qualquer outro unique que a
- * tabela venha a ganhar, para nao tratar um conflito diferente como duplicata de
- * envio. Checagem estrutural em vez de `instanceof`: o erro atravessa o adapter
- * e o driver, e so o formato e garantido.
+ * chave unica; o nome da coluna distingue esta daqui de qualquer outro unique
+ * que a tabela venha a ganhar, para nao tratar um conflito diferente como
+ * duplicata de envio. Checagem estrutural em vez de `instanceof`: o erro
+ * atravessa o adapter e o driver, e so o formato e garantido.
  */
 function isClientKeyConflict(error: unknown) {
   if (typeof error !== "object" || error === null) return false;
-  const { code, meta } = error as { code?: unknown; meta?: { target?: unknown } };
+  const { code, meta } = error as {
+    code?: unknown;
+    meta?: {
+      target?: unknown;
+      driverAdapterError?: { cause?: { constraint?: unknown; originalMessage?: unknown } };
+    };
+  };
   if (code !== "P2002") return false;
 
-  const target = meta?.target;
-  const columns = Array.isArray(target) ? target : typeof target === "string" ? [target] : [];
-  return columns.some((column) => String(column).includes("clientKey"));
+  // De onde o nome da coluna PODE vir. `target` e o campo classico do Prisma,
+  // mas com o driver adapter (@prisma/adapter-pg) ele nao vem preenchido: o
+  // unico lugar onde o indice aparece e no erro cru do Postgres, dentro de
+  // driverAdapterError. Sem esta segunda fonte o conflito passava batido e o
+  // reenvio recebia 500 — que o cliente trata como "tentar de novo", ou seja,
+  // fila offline em retry infinito exatamente no caso que este bloco existe
+  // para resolver.
+  const cause = meta?.driverAdapterError?.cause;
+  const constraint = cause?.constraint;
+  const candidates = [
+    ...(Array.isArray(meta?.target) ? meta.target : [meta?.target]),
+    ...(Array.isArray(constraint) ? constraint : [constraint]),
+    // Mensagem do Postgres: o texto e traduzido conforme o locale do servidor,
+    // mas o nome do indice ("ReceiptNote_clientKey_key") sai igual em qualquer
+    // idioma.
+    cause?.originalMessage,
+  ];
+
+  return candidates.some(
+    (candidate) => typeof candidate === "string" && candidate.includes("clientKey"),
+  );
 }
 
 /**
