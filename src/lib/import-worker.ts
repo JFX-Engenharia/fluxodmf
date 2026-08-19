@@ -89,7 +89,13 @@ const taskPayloadSchema = z.object({
 type ImportTaskPayload = z.infer<typeof taskPayloadSchema>;
 
 const CHUNK_SIZE = 100;
-const STALE_AFTER_MS = 15 * 60_000;
+/**
+ * Depois disto um PROCESSANDO nao e mais trabalho em andamento, e sim trabalho
+ * abandonado por um processo que morreu no meio. Exportado porque a rota de
+ * polling decide o redisparo pelo MESMO limiar: se ela chamasse antes, o claim
+ * aqui recusaria e a tarefa ficaria presa do mesmo jeito.
+ */
+export const STALE_AFTER_MS = 15 * 60_000;
 
 function dateFromIsoDay(day: string) {
   return new Date(`${day}T00:00:00.000Z`);

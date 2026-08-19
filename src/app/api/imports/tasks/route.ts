@@ -2,7 +2,7 @@ import { ImportStatus } from "@prisma-generated/enums";
 import { handleApiError, ok } from "@/lib/api";
 import { requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { processImportTask } from "@/lib/import-worker";
+import { processImportTask, STALE_AFTER_MS } from "@/lib/import-worker";
 
 function createdAccounts(value: string): string[] {
   try {
@@ -43,11 +43,24 @@ export async function GET() {
       },
     });
 
-    const stalePendingBefore = new Date(Date.now() - 60_000);
+    // Dois abandonos diferentes: PENDENTE parado ha mais de 60s e o processo que
+    // caiu ANTES de o worker pegar a tarefa; PROCESSANDO parado ha mais de
+    // STALE_AFTER_MS e o worker que pegou e morreu no meio. Sem o segundo caso a
+    // importacao ficava PROCESSANDO para sempre — o claim do worker ja aceitava
+    // retoma-la, mas ninguem o chamava de volta. O limiar e o MESMO do claim,
+    // importado dali: redisparar antes so gastaria uma chamada recusada.
+    const now = Date.now();
+    const stalePendingBefore = new Date(now - 60_000);
+    const staleProcessingBefore = new Date(now - STALE_AFTER_MS);
     for (const task of tasks) {
-      if (task.status === ImportStatus.PENDENTE && task.createdAt < stalePendingBefore) {
-        void processImportTask(task.id).catch(() => {});
-      }
+      // `startedAt` nulo em PROCESSANDO nao existe na pratica (o claim grava os
+      // dois juntos), e o `lt` do worker tambem nao casaria com nulo.
+      const abandonada =
+        (task.status === ImportStatus.PENDENTE && task.createdAt < stalePendingBefore) ||
+        (task.status === ImportStatus.PROCESSANDO &&
+          task.startedAt !== null &&
+          task.startedAt < staleProcessingBefore);
+      if (abandonada) void processImportTask(task.id).catch(() => {});
     }
 
     return ok({

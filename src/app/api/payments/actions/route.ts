@@ -5,7 +5,11 @@ import { requireMutationAllowed, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { withIdempotency } from "@/lib/idempotency";
 import { assertActorCanAct, dateFromIsoDay, PAYMENT_ACTIONS } from "@/lib/payment-actions";
-import { parseBatchResults, processPaymentBatch } from "@/lib/payment-batch-worker";
+import {
+  parseBatchResults,
+  processPaymentBatch,
+  STALE_AFTER_MS,
+} from "@/lib/payment-batch-worker";
 
 /** Teto por lote: acima disso o operador esta selecionando a lista inteira. */
 const MAX_BATCH_SIZE = 500;
@@ -79,8 +83,17 @@ export async function POST(request: Request) {
 }
 
 /**
- * Polling dos lotes do proprio usuario, com a auto-cura que a importacao ja usa:
- * job PENDENTE parado ha mais de 60s e redisparado aqui, o que dispensa cron.
+ * Polling dos lotes do proprio usuario, com a auto-cura que a importacao ja usa,
+ * o que dispensa cron. Sao dois abandonos diferentes:
+ *
+ * - PENDENTE parado ha mais de 60s: o processo caiu ANTES de o worker pegar o
+ *   job, entao nada comecou e retomar e barato.
+ * - PROCESSANDO parado ha mais de STALE_AFTER_MS: o worker pegou e morreu no
+ *   meio. Sem este caso o lote ficava PROCESSANDO para sempre — o claim do
+ *   worker ja aceitava retoma-lo, mas ninguem o chamava de volta.
+ *
+ * O limiar do segundo caso e o MESMO do claim, importado dali: redisparar antes
+ * so gastaria uma chamada que o worker recusaria, e o job continuaria preso.
  */
 export async function GET() {
   try {
@@ -106,11 +119,19 @@ export async function GET() {
       },
     });
 
-    const stalePendingBefore = new Date(Date.now() - 60_000);
+    const now = Date.now();
+    const stalePendingBefore = new Date(now - 60_000);
+    const staleProcessingBefore = new Date(now - STALE_AFTER_MS);
     for (const job of jobs) {
-      if (job.status === ImportStatus.PENDENTE && job.createdAt < stalePendingBefore) {
-        void processPaymentBatch(job.id).catch(() => {});
-      }
+      // `startedAt` nulo em PROCESSANDO nao existe na pratica (o claim grava os
+      // dois juntos), e o `lt` do worker tambem nao casaria com nulo — sem esta
+      // guarda o redisparo seria uma chamada morta.
+      const abandonado =
+        (job.status === ImportStatus.PENDENTE && job.createdAt < stalePendingBefore) ||
+        (job.status === ImportStatus.PROCESSANDO &&
+          job.startedAt !== null &&
+          job.startedAt < staleProcessingBefore);
+      if (abandonado) void processPaymentBatch(job.id).catch(() => {});
     }
 
     return ok({
