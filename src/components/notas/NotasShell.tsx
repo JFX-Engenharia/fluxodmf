@@ -39,10 +39,6 @@ const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 const AUTH_CONFIRM_TIMEOUT_MS = 3_500;
 const HISTORY_PAGE_SIZE = 30;
 
-type NotasShellProps = {
-  ownerId: string;
-};
-
 type OwnerState = "checking" | "ready" | "offline" | "blocked";
 
 type ReceiptNoteListResponse = {
@@ -137,7 +133,7 @@ function isCapturedInPeriod(capturedAt: string, filters: HistoryFilters): boolea
   return (fromTime === null || capturedAtTime >= fromTime) && (toTime === null || capturedAtTime <= toTime);
 }
 
-export function NotasShell({ ownerId }: NotasShellProps) {
+export function NotasShell() {
   const syncSnapshot = useSyncExternalStore(
     subscribeNotaSync,
     getNotaSyncSnapshot,
@@ -316,13 +312,18 @@ export function NotasShell({ ownerId }: NotasShellProps) {
     const activateOfflineOwner = () => {
       if (!active) return;
       const lastConfirmedOwnerId = getLastConfirmedOwnerId();
-      if (lastConfirmedOwnerId && lastConfirmedOwnerId !== ownerId) {
+      if (!lastConfirmedOwnerId) {
         setActiveOwnerId(null);
         setOwnerState("blocked");
         setOwnerMessage("Conecte-se para confirmar a conta antes de guardar novas fotos neste aparelho.");
+        if (online) {
+          retryTimer = window.setTimeout(() => {
+            if (active) setOwnerRetryKey((current) => current + 1);
+          }, 30_000);
+        }
         return;
       }
-      setActiveOwnerId(ownerId);
+      setActiveOwnerId(lastConfirmedOwnerId);
       setOwnerState("offline");
       setOwnerMessage("");
       if (online) {
@@ -384,7 +385,7 @@ export function NotasShell({ ownerId }: NotasShellProps) {
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
     };
-  }, [online, ownerId, ownerRetryKey]);
+  }, [online, ownerRetryKey]);
 
   useEffect(() => {
     if (!activeOwnerId) return;

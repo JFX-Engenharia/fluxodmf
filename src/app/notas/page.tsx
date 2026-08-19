@@ -8,5 +8,5 @@ export default async function NotasPage() {
   if (!session) redirect("/login");
   if (!canAccessTab(session.role, "notas")) redirect("/painel");
 
-  return <NotasShell ownerId={session.id} />;
+  return <NotasShell />;
 }
