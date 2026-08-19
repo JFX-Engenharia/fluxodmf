@@ -38,6 +38,7 @@ const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png"]);
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
 const AUTH_CONFIRM_TIMEOUT_MS = 3_500;
 const HISTORY_PAGE_SIZE = 30;
+const LOAD_NOTAS_ERROR = "Não foi possível abrir suas fotos.";
 
 type OwnerState = "checking" | "ready" | "offline" | "blocked";
 
@@ -191,9 +192,9 @@ export function NotasShell() {
     try {
       setLocalRecords(await listNotas(activeOwnerId));
       setLocalRecordsOwnerId(activeOwnerId);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível abrir suas fotos.");
+      setError((current) => current === LOAD_NOTAS_ERROR ? "" : current);
+    } catch {
+      setError(LOAD_NOTAS_ERROR);
     }
   }, [activeOwnerId]);
 
@@ -365,6 +366,7 @@ export function NotasShell() {
           saveLastConfirmedOwnerId(liveOwnerId);
           setActiveOwnerId(liveOwnerId);
           setOwnerState("ready");
+          setOwnerMessage("");
         })
         .catch(() => {
           activateOfflineOwner();
@@ -406,7 +408,7 @@ export function NotasShell() {
 
   function startCapture(files: File[]) {
     if (!canCapture) {
-      setError("Aguarde a confirmação da sua conta antes de guardar novas fotos.");
+      setOwnerMessage("Aguarde a confirmação da sua conta antes de guardar novas fotos.");
       return;
     }
     setNotice("");
@@ -426,7 +428,7 @@ export function NotasShell() {
   async function confirmCapture(files: File[], description: string) {
     if (!canCapture || !activeOwnerId) {
       setCapture([]);
-      setError("Aguarde a confirmação da sua conta antes de guardar novas fotos.");
+      setOwnerMessage("Aguarde a confirmação da sua conta antes de guardar novas fotos.");
       return;
     }
     setBusy(true);
@@ -462,6 +464,7 @@ export function NotasShell() {
         setProgress({ done: saved + rejected, total: files.length });
       }
       setCapture([]);
+      await reload();
       if (saved > 0) {
         setNotice(saved === 1
           ? "Foto guardada. Ela será enviada quando houver sinal."
@@ -472,7 +475,6 @@ export function NotasShell() {
           ? "Não consegui preparar 1 foto. Tente tirar uma foto nova dela."
           : `Não consegui preparar ${rejected} fotos. Tente tirar fotos novas delas.`);
       }
-      await reload();
       if (saved > 0) {
         void kickNotaSync(activeOwnerId).finally(() => void reloadServerHistory(historyFiltersRef.current));
       }
