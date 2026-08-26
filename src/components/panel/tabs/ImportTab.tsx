@@ -484,7 +484,7 @@ export function ImportTab() {
               <div className="import-copy">
                 <span className="eyebrow">ETAPA 2 DE 3</span>
                 <strong>Importação da planilha refinada</strong>
-                <span className="muted">Envie o arquivo com fornecedor, data, descrição, valor e centro de custo.</span>
+                <span className="muted">Envie o arquivo com data, descrição, valor e centro de custo. Só o valor é obrigatório.</span>
               </div>
               <input
                 ref={fileInputRef}
@@ -753,7 +753,7 @@ export function ImportTab() {
             <div className="stat">
               <span>Bloqueadas</span>
               <strong>{preview.invalidRows}</strong>
-              <small>sem fornecedor ou sem valor</small>
+              <small>sem valor válido</small>
             </div>
             <div className="stat">
               <span>Duplicadas</span>
@@ -873,7 +873,13 @@ export function ImportTab() {
                       return (
                         <tr key={`${row.rowNumber}-${row.uniqueKey}`}>
                           <td>{row.rowNumber}</td>
-                          <td>{row.supplierName || "-"}</td>
+                          <td>
+                            {row.supplierName === UNDEFINED_MARKER ? (
+                              <strong>{UNDEFINED_MARKER}</strong>
+                            ) : (
+                              row.supplierName || "-"
+                            )}
+                          </td>
                           <td>
                             {row.description === UNDEFINED_MARKER ? (
                               <strong>{UNDEFINED_MARKER}</strong>

@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         if (importable.length === 0) {
           throw new ApiError(
             400,
-            "Nenhuma linha pôde ser importada: todas estão sem fornecedor ou sem valor.",
+            "Nenhuma linha pôde ser importada: todas estão sem valor válido.",
           );
         }
 

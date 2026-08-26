@@ -70,7 +70,7 @@ async function truncamento() {
 
 /**
  * O pedido do usuario: informacao faltante entra com marcador em vez de sumir.
- * So fornecedor e valor bloqueiam.
+ * So valor bloqueia.
  */
 async function incompletas() {
   const preview = await parsePaymentFile(
@@ -98,15 +98,17 @@ async function incompletas() {
   assert.ok(por("DELTA")?.currentDueDate, "sem data deve receber a data da importacao");
   assert.ok(por("DELTA")?.undefinedFields.includes("currentDueDate"));
 
-  // Os dois unicos bloqueantes.
+  // O unico bloqueante.
   assert.ok((por("EPSILON")?.errors.length ?? 0) > 0, "sem valor tem que bloquear");
-  const semFornecedor = preview.rows.find((row) => !row.supplierName);
-  assert.ok((semFornecedor?.errors.length ?? 0) > 0, "sem fornecedor tem que bloquear");
+  const semFornecedor = por(UNDEFINED_MARKER);
+  assert.equal(semFornecedor?.errors.length, 0, "sem fornecedor nao pode bloquear");
+  assert.ok(semFornecedor?.undefinedFields.includes("supplier"));
+  assert.equal(semFornecedor?.supplierName, UNDEFINED_MARKER);
 
-  assert.equal(preview.validRows, 4, `validRows=${preview.validRows}`);
-  assert.equal(preview.incompleteRows, 3, `incompleteRows=${preview.incompleteRows}`);
+  assert.equal(preview.validRows, 5, `validRows=${preview.validRows}`);
+  assert.equal(preview.incompleteRows, 4, `incompleteRows=${preview.incompleteRows}`);
   assert.ok(!preview.newAccounts.includes(UNDEFINED_MARKER), "sentinela nao e conta nova");
-  console.log("OK incompletas: so fornecedor e valor bloqueiam; o resto entra marcado.");
+  console.log("OK incompletas: so valor bloqueia; o resto entra marcado.");
 }
 
 /**
@@ -145,7 +147,7 @@ async function chaves() {
  * BUG A: o confirm validava com o schema estrito ANTES de filtrar, e o cliente
  * manda todas as linhas. Uma unica linha bloqueada derrubava a importacao
  * inteira com 400, enquanto o botao dizia "Importar N linha(s)". O schema de
- * fio tem que aceitar a linha bloqueada; o estrito so roda no que vai gravar.
+ * fio tem que aceitar linhas incompletas; o estrito roda no que vai gravar.
  */
 async function confirmToleraBloqueada() {
   const preview = await parsePaymentFile(
@@ -166,9 +168,9 @@ async function confirmToleraBloqueada() {
   });
 
   const importaveis = body.rows.filter((row) => row.errors.length === 0 && !row.duplicate);
-  assert.equal(importaveis.length, 1, "a linha boa tem que sobreviver ao filtro");
+  assert.equal(importaveis.length, 2, "as duas linhas tem que sobreviver ao filtro");
   z.array(importableRowSchema).parse(importaveis);
-  console.log("OK BUG A: linha bloqueada nao derruba o lote; a boa passa no schema estrito.");
+  console.log("OK BUG A: linha sem fornecedor entra marcada e ambas passam no schema estrito.");
 }
 
 async function main() {

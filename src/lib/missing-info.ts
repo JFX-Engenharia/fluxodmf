@@ -10,7 +10,7 @@
  */
 
 /** Campos que a planilha pode omitir sem impedir a importacao. */
-export type MissingField = "description" | "currentDueDate" | "costCenter" | "category";
+export type MissingField = "supplier" | "description" | "currentDueDate" | "costCenter" | "category";
 
 /** Valor gravado no lugar do que faltou. Tambem e o nome da conta-sentinela. */
 export const UNDEFINED_MARKER = "INDEFINIDO";
@@ -22,6 +22,10 @@ export const UNDEFINED_MARKER = "INDEFINIDO";
  * texto que o operador le antes de importar e identico ao de depois.
  */
 export const missingFieldInfo: Record<MissingField, { label: string; explanation: string }> = {
+  supplier: {
+    label: "Fornecedor",
+    explanation: "Fornecedor não veio na planilha; gravado como INDEFINIDO.",
+  },
   description: {
     label: "Descrição",
     explanation: "Descrição não veio na planilha; gravada como INDEFINIDO.",

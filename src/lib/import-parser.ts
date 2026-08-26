@@ -409,12 +409,12 @@ export async function parsePaymentFile(
     const amount = parseMoney(raw[columns.amount ?? ""]);
     const dueDate = parseDate(raw[columns.dueDate ?? ""]);
 
-    // So valor e fornecedor bloqueiam: sem eles nao ha compra identificavel.
-    if (!supplierName) errors.push("Fornecedor obrigatorio");
+    // So o valor bloqueia: sem ele nao ha compra.
     if (Number.isNaN(amount) || amount <= 0) errors.push("Valor invalido");
 
-    // O resto entra marcado. Eram estes quatro campos que faziam a compra sumir
+    // O resto entra marcado. Eram estes campos que faziam a compra sumir
     // sem aviso, sendo que pagamento sem centro de custo e rotina aqui.
+    if (!supplierName) undefinedFields.push("supplier");
     if (!description) undefinedFields.push("description");
     if (!costCenter) undefinedFields.push("costCenter");
     if (!category) undefinedFields.push("category");
@@ -424,6 +424,7 @@ export async function parsePaymentFile(
     // mostrar o valor exato que sera gravado, e a chave unica depende dele.
     // `category` fica sem marcador de proposito — ela ja era opcional e gravar
     // INDEFINIDO criaria um balde novo ao lado do historico do dashboard.
+    const filledSupplier = supplierName || UNDEFINED_MARKER;
     const filledDescription = description || UNDEFINED_MARKER;
     const filledCostCenter = costCenter || UNDEFINED_MARKER;
     const currentDueDate = dueDate ? isoDate(dueDate) : importDay;
@@ -433,7 +434,7 @@ export async function parsePaymentFile(
     const key = blocked
       ? `invalid-${rowNumber}`
       : buildUniqueKey({
-          supplierName,
+          supplierName: filledSupplier,
           description: filledDescription,
           amount,
           currentDueDate,
@@ -451,7 +452,7 @@ export async function parsePaymentFile(
     return {
       rowNumber,
       externalReference: String(raw[columns.externalReference ?? ""] ?? "").trim() || undefined,
-      supplierName,
+      supplierName: filledSupplier,
       description: filledDescription,
       amount: Number.isNaN(amount) ? 0 : amount,
       category,

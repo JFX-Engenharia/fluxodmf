@@ -143,16 +143,17 @@ export async function convertRawFile(
     // Converter e importar tem que recusar exatamente as mesmas linhas — e o
     // contrato declarado no topo deste arquivo. Se so o parser afrouxasse, o
     // conversor viraria o novo ponto onde a compra some.
-    if (!supplierName) errors.push("Fornecedor obrigatorio");
     // O importador recusa valor <= 0, entao converter uma linha assim so
     // empurraria o erro para a etapa seguinte.
     if (Number.isNaN(amount) || amount <= 0) errors.push("Valor invalido");
 
+    if (!supplierName) undefinedFields.push("supplier");
     if (!description) undefinedFields.push("description");
     if (!costCenter) undefinedFields.push("costCenter");
     if (!category) undefinedFields.push("category");
     if (!dueDate) undefinedFields.push("currentDueDate");
 
+    const filledSupplier = supplierName || UNDEFINED_MARKER;
     const filledDescription = description || UNDEFINED_MARKER;
     const filledCostCenter = costCenter || UNDEFINED_MARKER;
     const currentDueDate = dueDate ? isoDate(dueDate) : importDay;
@@ -173,7 +174,7 @@ export async function convertRawFile(
      */
     if (errors.length === 0) {
       const key = buildUniqueKey({
-        supplierName,
+        supplierName: filledSupplier,
         description: filledDescription,
         amount,
         currentDueDate,
@@ -188,7 +189,7 @@ export async function convertRawFile(
 
     return {
       rowNumber,
-      supplierName,
+      supplierName: filledSupplier,
       dueDate: currentDueDate,
       description: filledDescription,
       amount: Number.isNaN(amount) ? 0 : amount,
