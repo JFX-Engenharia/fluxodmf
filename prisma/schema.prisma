@@ -99,9 +99,19 @@ enum AllocationSource {
 
 enum PaymentRequestStatus {
   PENDENTE
+  INFO_SOLICITADA
   APROVADO
   REPROVADO
   CANCELADO
+}
+
+enum PaymentRequestEventType {
+  CRIADA
+  INFO_SOLICITADA
+  INFO_RESPONDIDA
+  APROVADA
+  REPROVADA
+  CANCELADA
 }
 
 model User {
@@ -132,6 +142,10 @@ model User {
   paymentRequests PaymentRequest[] @relation("PaymentRequestRequestedBy")
   reviewedPaymentRequests PaymentRequest[] @relation("PaymentRequestReviewedBy")
   requestApprovals PaymentRequestApproval[] @relation("PaymentRequestApprover")
+  requestEvents PaymentRequestEvent[]
+  requestSettings PaymentRequestSettings[]
+  highValueApproval HighValueApprover?
+  pushSubscriptions PushSubscription[]
   sessions      UserSession[]
   devices       Device[]
   loginEvents   LoginEvent[]
@@ -524,18 +538,62 @@ model PaymentRequest {
   requestedById  String
   requestedBy    User                 @relation("PaymentRequestRequestedBy", fields: [requestedById], references: [id])
   status         PaymentRequestStatus @default(PENDENTE)
+  requiresOwnerApproval Boolean @default(false)
   reviewedById   String?
   reviewedBy     User?                @relation("PaymentRequestReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt     DateTime?
   reviewReason   String?
   attachments    PaymentRequestAttachment[]
   approvals      PaymentRequestApproval[]
+  events         PaymentRequestEvent[]
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
   @@index([workId, status, createdAt])
   @@index([requestedById, status, createdAt])
+  @@index([requiresOwnerApproval, status, createdAt])
   @@index([status, createdAt])
+}
+
+model PaymentRequestSettings {
+  id                 String   @id @default("singleton")
+  highValueThreshold Decimal? @db.Decimal(14, 2)
+  updatedById        String?
+  updatedBy          User?    @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt          DateTime @updatedAt
+}
+
+model HighValueApprover {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model PaymentRequestEvent {
+  id        String                  @id @default(cuid())
+  requestId String
+  request   PaymentRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actorId   String
+  actor     User                    @relation(fields: [actorId], references: [id])
+  type      PaymentRequestEventType
+  note      String?
+  createdAt DateTime                @default(now())
+
+  @@index([requestId, createdAt])
+}
+
+model PushSubscription {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  lastSuccessAt DateTime?
+
+  @@index([userId])
 }
 
 model PaymentRequestAttachment {

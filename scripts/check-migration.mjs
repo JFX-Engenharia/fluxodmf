@@ -44,6 +44,7 @@ try {
       ["PaymentAllocation", "amount", 14, 2],
       ["Advance", "amount", 14, 2], ["Advance", "spentAmount", 14, 2], ["Advance", "returnedAmount", 14, 2],
       ["PaymentRequest", "amount", 14, 2],
+      ["PaymentRequestSettings", "highValueThreshold", 14, 2],
       ["AllocationRuleSplit", "percentage", 7, 4], ["PaymentAllocation", "percentage", 7, 4],
     ];
     const columns = await test.query(`
@@ -85,7 +86,9 @@ try {
     }
     await test.query(migration);
     assert.equal((await test.query(preflight)).rowCount, 0);
-    console.log("Precisao decimal validada: 11 colunas, escala, faixa e preservacao dos dados na recusa.");
+    assert.equal((await test.query(`SELECT COUNT(*)::int AS count FROM "PaymentRequestSettings" WHERE id = 'singleton' AND "highValueThreshold" IS NULL`)).rows[0].count, 1);
+    assert.equal((await test.query(`SELECT COUNT(*)::int AS count FROM "PushSubscription"`)).rows[0].count, 0);
+    console.log("Precisao decimal validada: 12 colunas, escala, faixa e preservacao dos dados na recusa.");
     console.log("Migração financeira validada em PostgreSQL temporário.");
   } finally {
     await test.end();
