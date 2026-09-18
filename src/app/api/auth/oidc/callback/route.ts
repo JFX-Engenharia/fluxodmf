@@ -7,6 +7,7 @@ import { DEVICE_COOKIE, resolveDevice } from "@/lib/device";
 import { prisma } from "@/lib/db";
 import { exchangeCorporateCode } from "@/lib/oidc";
 import { recordLoginEvent, sessionRequestInfo } from "@/lib/session-info";
+import { requestDestination, validRequestId } from "@/lib/request-link";
 
 const corporateMessages: Record<UserStatus, string> = {
   PENDENTE: "pending",
@@ -17,6 +18,8 @@ const corporateMessages: Record<UserStatus, string> = {
 
 export async function GET(request: NextRequest) {
   const loginUrl = new URL("/login", request.url);
+  const requestId = validRequestId(request.cookies.get("fluxo_oidc_request")?.value);
+  if (requestId) loginUrl.searchParams.set("request", requestId);
   try {
     const code = request.nextUrl.searchParams.get("code");
     const state = request.nextUrl.searchParams.get("state");
@@ -113,7 +116,7 @@ export async function GET(request: NextRequest) {
       metadata: { email: user.email },
     });
 
-    const response = NextResponse.redirect(new URL("/painel", request.url));
+    const response = NextResponse.redirect(new URL(user.role === Role.COLABORADOR ? "/notas" : requestDestination(requestId), request.url));
     response.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,
       sameSite: "lax",
@@ -125,6 +128,7 @@ export async function GET(request: NextRequest) {
     response.cookies.delete("fluxo_oidc_state");
     response.cookies.delete("fluxo_oidc_nonce");
     response.cookies.delete("fluxo_oidc_verifier");
+    response.cookies.set("fluxo_oidc_request", "", { path: "/api/auth/oidc", maxAge: 0 });
     return response;
   } catch (error) {
     await recordLoginEvent(request, {

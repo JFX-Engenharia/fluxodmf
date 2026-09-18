@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { handleApiError } from "@/lib/api";
 import { oidcDiscovery, oidcSettings } from "@/lib/oidc";
+import { validRequestId } from "@/lib/request-link";
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,6 +38,7 @@ export async function GET(request: NextRequest) {
     response.cookies.set("fluxo_oidc_state", state, cookieOptions);
     response.cookies.set("fluxo_oidc_nonce", nonce, cookieOptions);
     response.cookies.set("fluxo_oidc_verifier", verifier, cookieOptions);
+    response.cookies.set("fluxo_oidc_request", validRequestId(request.nextUrl.searchParams.get("request")) ?? "", cookieOptions);
     return response;
   } catch (error) {
     return handleApiError(error);
