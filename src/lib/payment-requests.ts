@@ -6,6 +6,8 @@ import { auditLog } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { assertFileSignature } from "@/lib/file-signature";
 import { MEGABYTE } from "@/lib/body-size";
+import { sendPushToUsers } from "@/lib/push";
+import { money } from "@/lib/format";
 
 type Actor = { id: string; role: Role };
 export type RequestAction = "approve" | "reject" | "request_info" | "respond" | "cancel";
@@ -44,6 +46,11 @@ export async function validateRequestAttachments(files: File[], responding = fal
 }
 type AttachmentData = Awaited<ReturnType<typeof validateRequestAttachments>>;
 
+function requestNotification(request: { id: string; work: { name: string }; amount: Prisma.Decimal }, title: string) {
+  return { title, body: `${request.work.name} — ${money(Number(request.amount))}`,
+    url: `/painel?tab=solicitacoes&request=${encodeURIComponent(request.id)}`, tag: `request-${request.id}` };
+}
+
 // Ordem de locks em todos os caminhos: configuração, depois solicitação.
 // SHARE permite decisões em pedidos diferentes, mas serializa com a troca de designados.
 async function lockSettings(tx: Prisma.TransactionClient) {
@@ -51,10 +58,8 @@ async function lockSettings(tx: Prisma.TransactionClient) {
 }
 
 export async function getRequestSettings(client: Prisma.TransactionClient = prisma) {
-  const [settings, designated] = await Promise.all([
-    client.paymentRequestSettings.findUniqueOrThrow({ where: { id: "singleton" } }),
-    client.highValueApprover.findMany({ include: { user: { select: { id: true, name: true, role: true, status: true } } }, orderBy: { createdAt: "asc" } }),
-  ]);
+  const settings = await client.paymentRequestSettings.findUniqueOrThrow({ where: { id: "singleton" } });
+  const designated = await client.highValueApprover.findMany({ include: { user: { select: { id: true, name: true, role: true, status: true } } }, orderBy: { createdAt: "asc" } });
   return { threshold: settings.highValueThreshold === null ? null : Number(settings.highValueThreshold),
     approvers: designated.map(a => a.user), updatedAt: settings.updatedAt.toISOString() };
 }
@@ -109,7 +114,7 @@ export function serializeRequest(request: Prisma.PaymentRequestGetPayload<{ incl
 export async function createPaymentRequest(actor: Actor, input: z.input<typeof paymentRequestSchema>, attachments: AttachmentData) {
   const body = paymentRequestSchema.parse(input);
   if (!attachments.length || attachments.length > 5) throw new ApiError(400, "Anexe de 1 a 5 documentos.");
-  return prisma.$transaction(async tx => {
+  const saved = await prisma.$transaction(async tx => {
     const work = await tx.work.findUnique({ where: { id: body.workId } });
     if (!work?.active) throw new ApiError(404, "Obra não encontrada ou inativa.");
     if (actor.role !== Role.ADMINISTRADOR && !await tx.userWork.findUnique({ where: { userId_workId: { userId: actor.id, workId: work.id } } })) {
@@ -127,6 +132,8 @@ export async function createPaymentRequest(actor: Actor, input: z.input<typeof p
         altoValor: resolved.requiresOwnerApproval, limite: resolved.threshold } }, tx);
     return saved;
   });
+  await sendPushToUsers(saved.approvals.map(a => a.approverId), requestNotification(saved, "Compra aguardando sua aprovação"));
+  return saved;
 }
 
 export async function saveRequestSettings(actor: Actor, threshold: number | null, approverIds: string[]) {
@@ -156,7 +163,7 @@ export async function saveRequestSettings(actor: Actor, threshold: number | null
 
 export async function applyRequestAction(actor: Actor, id: string, action: RequestAction, note = "", attachments: AttachmentData = []) {
   const reason = requestNoteSchema.parse(note);
-  return prisma.$transaction(async tx => {
+  const { result, recipients, notification } = await prisma.$transaction(async tx => {
     await lockSettings(tx);
     await tx.$queryRaw`SELECT id FROM "PaymentRequest" WHERE id = ${id} FOR UPDATE`;
     const request = await tx.paymentRequest.findUnique({ where: { id }, include: requestInclude });
@@ -206,6 +213,14 @@ export async function applyRequestAction(actor: Actor, id: string, action: Reque
     await tx.paymentRequestEvent.create({ data: { requestId: id, actorId: actor.id, type, note: reason || null } });
     await auditLog({ actorId: actor.id, event, entity: "PaymentRequest", entityId: id,
       metadata: { obra: request.work.name, altoValor: request.requiresOwnerApproval, motivo: reason || null, aprovacoes: approvedCount, total: request.approvals.length, anexos: attachments.length } }, tx);
-    return { status, approvalsDone: approvedCount, approvalsTotal: request.approvals.length };
+    const recipients = action === "respond" ? request.approvals.filter(a => !a.approvedAt).map(a => a.approverId)
+      : action === "cancel" ? [] : [request.requestedById];
+    const title = action === "request_info" ? "Informação solicitada sobre sua compra"
+      : action === "respond" ? "Compra aguardando sua aprovação"
+      : action === "reject" ? "Sua compra foi reprovada"
+      : status === PaymentRequestStatus.APROVADO ? "Sua compra foi aprovada" : "Aprovação registrada para sua compra";
+    return { result: { status, approvalsDone: approvedCount, approvalsTotal: request.approvals.length }, recipients, notification: requestNotification(request, title) };
   });
+  await sendPushToUsers(recipients, notification);
+  return result;
 }
