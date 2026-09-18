@@ -1,8 +1,7 @@
 /**
  * Regressao das quatro falhas que faziam compras sumirem na importacao. Monta
  * a planilha em memoria (exceljs, ja e dependencia) para nao depender de
- * fixture no repo — check-converter.ts exige um arquivo bruto real que o
- * repositorio nao versiona, entao ele nao serve de porta de CI.
+ * fixture no repo.
  *
  * Uso: npm run check:imports
  */
