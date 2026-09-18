@@ -98,7 +98,7 @@ const tabDefinitions: TabDefinition[] = [
     id: "solicitacoes",
     label: "Solicitações",
     title: "Solicitações de pagamento",
-    subtitle: "Envie pagamentos para aprovação da obra",
+    subtitle: "Autorize compras por alçada e acompanhe pedidos de informação",
     section: "PAINEL",
     Component: PaymentRequestsTab,
   },

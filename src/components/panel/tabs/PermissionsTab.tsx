@@ -3,6 +3,7 @@
 import { Check, ShieldCheck } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { OperationalExports } from "@/components/panel/OperationalExports";
+import { HighValueSettings } from "@/components/panel/tabs/payment-requests/HighValueSettings";
 import { usePanel } from "@/components/panel/PanelContext";
 import type { PanelUserRow } from "@/components/panel/tabs/UsersTab";
 import { useFetchData } from "@/components/panel/useFetchData";
@@ -416,6 +417,7 @@ export function PermissionsTab() {
           </div>
         </div>
       </section>
+      <HighValueSettings users={users} />
       <OperationalExports />
     </>
   );
