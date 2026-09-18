@@ -44,6 +44,8 @@ export function DevicesTab() {
       const value = (await response.json()) as { error?: string; current?: boolean };
       if (!response.ok) throw new Error(value.error ?? "Não foi possível revogar o dispositivo.");
       if (value.current) {
+        // A navegacao completa descarta o estado do cliente apos revogar a sessao.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.assign("/login");
         return;
       }
