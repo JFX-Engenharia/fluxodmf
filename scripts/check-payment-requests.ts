@@ -31,6 +31,8 @@ async function main() {
     const load = (id: string) => prisma.paymentRequest.findUniqueOrThrow({ where: { id }, include: { approvals: { include: { approver: true } }, events: true, attachments: true } });
 
     await assert.rejects(validateRequestAttachments([]), denies(400));
+    assert.deepEqual(await validateRequestAttachments([new File([], "", { type: "application/octet-stream" })], true), [], "campo de arquivo vazio permite resposta só com texto");
+    await assert.rejects(validateRequestAttachments([new File([], "vazio.pdf", { type: "application/pdf" })], true), denies(400));
     await assert.rejects(validateRequestAttachments([new File(["html"], "nota.pdf", { type: "application/pdf" })]), denies(400));
     await assert.rejects(saveRequestSettings(admin, 5000, []), denies(400));
     await assert.rejects(saveRequestSettings(admin, 5000, [collaborator.id]), denies(400));

@@ -32,6 +32,9 @@ export const requestSettingsSchema = z.object({
 export const requestNoteSchema = z.string().trim().max(2000);
 
 export async function validateRequestAttachments(files: File[], responding = false) {
+  // FormData inclui um File sem nome/conteúdo quando o input opcional fica vazio.
+  // Um arquivo escolhido de fato (com nome, mesmo vazio) continua sendo inválido.
+  if (responding) files = files.filter(file => file.name !== "" || file.size > 0);
   const max = responding ? MAX_REQUEST_ATTACHMENTS : 5;
   if (!responding && !files.length) throw new ApiError(400, "Anexe ao menos um documento (PDF, JPG ou PNG).");
   if (files.length > max) throw new ApiError(400, `Anexe no máximo ${max} documentos.`);
