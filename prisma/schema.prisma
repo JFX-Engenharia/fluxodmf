@@ -321,7 +321,7 @@ model PaymentBatchAction {
 model Contribution {
   id            String      @id @default(cuid())
   accountLabel  String
-  amount        Decimal
+  amount        Decimal     @db.Decimal(14, 2)
   workId        String
   work          Work        @relation(fields: [workId], references: [id])
   importBatchId String
@@ -336,7 +336,7 @@ model Payment {
   externalReference String?
   supplierName      String
   description       String
-  amount            Decimal
+  amount            Decimal         @db.Decimal(14, 2)
   originalDueDate   DateTime
   currentDueDate    DateTime
   costCenter        String
@@ -376,8 +376,8 @@ model Payment {
 model ApprovalRule {
   id                  String    @id @default(cuid())
   name                String
-  minAmount           Decimal   @default(0)
-  maxAmount           Decimal?
+  minAmount           Decimal   @default(0) @db.Decimal(14, 2)
+  maxAmount           Decimal?  @db.Decimal(14, 2)
   workId              String?
   work                Work?     @relation(fields: [workId], references: [id], onDelete: SetNull)
   category            String?
@@ -466,7 +466,7 @@ model AllocationRuleSplit {
   rule       AllocationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
   workId     String
   work       Work           @relation(fields: [workId], references: [id])
-  percentage Decimal
+  percentage Decimal        @db.Decimal(7, 4)
 
   @@unique([ruleId, workId])
   @@index([workId])
@@ -478,8 +478,8 @@ model PaymentAllocation {
   payment    Payment          @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   workId     String
   work       Work             @relation(fields: [workId], references: [id])
-  percentage Decimal
-  amount     Decimal
+  percentage Decimal          @db.Decimal(7, 4)
+  amount     Decimal          @db.Decimal(14, 2)
   source     AllocationSource @default(MANUAL)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
@@ -492,9 +492,9 @@ model Advance {
   id               String        @id @default(cuid())
   collaboratorName String
   description      String
-  amount           Decimal
-  spentAmount      Decimal       @default(0)
-  returnedAmount   Decimal       @default(0)
+  amount           Decimal       @db.Decimal(14, 2)
+  spentAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  returnedAmount   Decimal       @default(0) @db.Decimal(14, 2)
   grantedAt        DateTime
   dueDate          DateTime
   settledAt        DateTime?
@@ -516,7 +516,7 @@ model PaymentRequest {
   id             String               @id @default(cuid())
   supplierName   String
   description    String
-  amount         Decimal
+  amount         Decimal              @db.Decimal(14, 2)
   dueDate        DateTime
   category       String               @default("")
   workId         String
