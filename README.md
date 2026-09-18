@@ -57,6 +57,8 @@ obrigatório em produção.
 | `npm test` | Executa os checks automatizados; requer um PostgreSQL de teste com as migrações aplicadas |
 | `npm run check:converter` | Valida conversão e reimportação com uma amostra sintética; aceita arquivo como argumento |
 | `npm run check:migration` | Cria um banco temporário, aplica todas as migrações e verifica a precisão decimal |
+| `npm run check:payment-requests` | Testa alçada, conversa, anexos e decisões concorrentes em um banco temporário |
+| `npm run check:push` | Testa inscrições, expiração, falhas e service worker, sem chamar serviços externos |
 | `npm run db:migrate` | Cria/aplica migrações no desenvolvimento |
 | `npm run db:migrate:deploy` | Aplica migrações pendentes sem alterar o schema |
 | `npm run db:push` | Sincroniza o schema diretamente; use apenas como transição/prototipação |
@@ -119,6 +121,9 @@ não tem acesso a nenhuma destas abas:
 
 A operação de pagamentos é restrita a Gestor, Aprovador e Administrador.
 As ações disponíveis também dependem das alçadas e das regras de cada operação.
+Em Solicitações, o Administrador configura a alçada e acompanha todos os pedidos,
+mas só decide pedidos de alto valor se também for designado. Operadores, Gestores,
+Aprovadores e Administradores ativos podem ser designados; o Dono não é um perfil novo.
 
 ## Gestão financeira avançada
 
@@ -158,18 +163,92 @@ excluído, para não quebrar a auditoria.
 
 ## Solicitações de pagamento
 
-Antes de entrar no fluxo diário, qualquer usuário com acesso à aba Solicitações
-pode abrir uma solicitação para uma obra permitida ao seu perfil. Fornecedor, valor, vencimento, descrição,
-obra e ao menos um anexo são obrigatórios; os anexos aceitos são PDF, JPG e PNG,
-com até 5 MB cada e no máximo cinco por solicitação.
+Depois da negociação, quem acessa a aba pode solicitar autorização para pagar em
+uma obra vinculada à sua conta (o Administrador pode usar qualquer obra ativa).
+Fornecedor, valor, vencimento, descrição, obra e ao menos um anexo são obrigatórios.
+Na criação, são aceitos de um a cinco arquivos PDF, JPG ou PNG de até 5 MB cada,
+com validação do conteúdo e idempotência do envio.
 
-Cada obra pode ter vários **responsáveis pela aprovação**, definidos por um
-Administrador na aba **Permissões** entre Gestores e Administradores ativos.
-Todos os responsáveis devem aprovar a solicitação; um Administrador também pode
-concluir a aprovação. Um responsável ou Administrador pode reprovar, sempre com
-motivo. A aprovação registra responsável,
-data e histórico, mas não cria pagamento automaticamente: a solicitação aprovada
-fica pronta para conferência e posterior inclusão no fluxo diário.
+Em **Permissões → Aprovação de alto valor**, o Administrador define o limite e
+designa o Dono e seus substitutos, entre usuários ativos que não sejam Colaboradores.
+A regra começa desligada (`highValueThreshold = null`).
+
+| Valor na criação | Quem decide |
+| --- | --- |
+| Até o limite, ou regra desligada | Todos os responsáveis ativos da obra; permanece a possibilidade de conclusão pelo Administrador |
+| Acima do limite | Vai direto aos designados de alto valor, sem aprovação intermediária da obra; uma aprovação de qualquer designado conclui |
+
+Sem aprovador ativo, o envio é recusado. O Administrador não designado pode ver e
+cancelar pedidos de alto valor, mas não aprovar, reprovar ou pedir informação.
+Alterar o limite só afeta novos pedidos: `requiresOwnerApproval` guarda o caminho
+decidido na criação. Trocar os designados atualiza as aprovações dos pedidos de
+alto valor em `PENDENTE` ou `INFO_SOLICITADA`, preservando os já encerrados. A
+configuração não permite deixar esses pedidos abertos sem designados.
+
+A fila **Aguardando sua decisão** apresenta cartões por vencimento. Aprovar aceita
+observação opcional; reprovar exige motivo. **Pedir informação** exige texto e
+suspende a decisão até o solicitante responder. A resposta pode incluir novos
+anexos, até dez no total da solicitação. Podem existir várias rodadas de pergunta
+e resposta, todas visíveis no histórico com autor, data e nota. O solicitante e o
+Administrador podem cancelar enquanto o pedido estiver pendente ou aguardando
+informação. Para mudar o valor, cancele e envie outro pedido.
+
+Decisão, anexos da resposta, evento e auditoria são gravados na mesma transação;
+decisões concorrentes conflitantes retornam 409. A aprovação registra a autorização
+e não cria `Payment` no fluxo diário. O backup administrativo inclui o caminho de
+aprovação, a configuração e os eventos; backups anteriores continuam aceitos.
+
+### Avisos no celular e no desktop
+
+O Web Push avisa os aprovadores quando a solicitação é criada, avisa o solicitante
+quando há aprovação, reprovação ou pedido de informação, e avisa os aprovadores
+pendentes após uma resposta. A notificação mostra obra e valor; fornecedor,
+anexos e conversa ficam dentro do aplicativo. Ao tocar, abre o cartão destacado,
+preservando o destino se for necessário entrar novamente.
+
+Para habilitar no **Render**, gere o par uma única vez:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Cadastre `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT` (um contato
+`mailto:administrador@empresa.com.br`) nas variáveis do Web Service. No ambiente
+local, use o `.env` ignorado pelo Git. Conserve as chaves entre deploys e mantenha
+a privada apenas no servidor. Sem uma configuração válida, os avisos ficam
+desligados e todas as funções de aprovação continuam disponíveis. Não é necessário
+liberar serviços externos no `connect-src` do navegador; o envio sai do servidor.
+O endpoint de inscrição aceita serviços de push do Google, Mozilla, Microsoft e
+Apple, exige autenticação e limita cada usuário a dez aparelhos.
+
+1. **Android:** abra o endereço HTTPS no Chrome, Edge ou Samsung Internet. Use
+   a opção de instalar/adicionar à tela inicial no menu do navegador, se desejar.
+   Entre na aba Solicitações e toque em **Ativar avisos neste aparelho**; permita
+   as notificações quando solicitado.
+2. **iPhone/iPad (16.4+):** abra no Safari, toque em Compartilhar → **Adicionar à
+   Tela de Início**. Abra pelo ícone instalado, entre na conta e ative os avisos
+   dentro do aplicativo. A página aberta fora do aplicativo mostra essa orientação.
+3. **Desktop:** use HTTPS ou localhost, abra Solicitações e ative os avisos. Para
+   desligar somente neste navegador, use **Desativar avisos**. Se a permissão foi
+   negada, reative nas permissões do site ou nos ajustes do aplicativo.
+
+O manifesto abre `/`, que encaminha Colaboradores a `/notas` e os outros perfis
+ao painel. A identidade anterior do PWA é preservada para instalações existentes.
+Em aparelhos compartilhados, ativar avisos em outra conta transfere a inscrição
+para essa conta. Usuários inativos não recebem envios. Inscrições são removidas
+quando o serviço informa expiração (404/410); falhas temporárias são registradas
+sem cancelar a operação. Os envios ocorrem depois do commit, sem garantia de
+entrega ou fila de repetição. O contador do menu continua disponível e atualiza
+a cada 30 segundos, ao retornar à janela e após alterações feitas na aba.
+
+Validação em aparelho real: instale o PWA, ative os avisos, feche o aplicativo,
+crie uma compra acima do limite por outra conta, toque no aviso e aprove. Confira
+o aviso da decisão no aparelho do solicitante. Repita no iPhone instalado, quando
+usado pela equipe. Restrições de bateria e permissões do sistema podem impedir
+avisos; confira sempre a fila. Os testes automatizados usam transporte simulado.
+
+Referências: [Web Push no WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)
+e [biblioteca web-push](https://github.com/web-push-libs/web-push).
 
 ## Importação
 
