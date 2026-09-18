@@ -1,19 +1,40 @@
 /**
  * Regressao das quatro falhas que faziam compras sumirem na importacao. Monta
  * a planilha em memoria (exceljs, ja e dependencia) para nao depender de
- * fixture no repo — check-converter.ts exige um arquivo bruto real que o
- * repositorio nao versiona, entao ele nao serve de porta de CI.
+ * fixture no repo.
  *
  * Uso: npm run check:imports
  */
 
 import assert from "node:assert/strict";
+import Module from "node:module";
+import { setTimeout as delay } from "node:timers/promises";
 import ExcelJS from "exceljs";
 import { z } from "zod";
+import { ImportStatus, Role, UserStatus } from "../generated/prisma/enums";
 import type { WorkMatcher } from "../src/lib/cost-center";
+import { ApiError } from "../src/lib/api";
+import { MEGABYTE } from "../src/lib/body-size";
 import { UNDEFINED_MARKER } from "../src/lib/missing-info";
-import { parsePaymentFile } from "../src/lib/import-parser";
-import { confirmSchema, importableRowSchema } from "../src/lib/import-worker";
+import { importDayIso, parsePaymentFile } from "../src/lib/import-parser";
+import { canonicalRow, confirmSchema, importableRowSchema, MAX_IMPORT_ROWS, processImportTask } from "../src/lib/import-worker";
+
+// Mesmo adaptador de cookies de check:notas: as rotas, sessoes e banco sao reais.
+let sessionToken: string | null = null;
+const loader = Module as unknown as {
+  _load: (request: string, parent: unknown, isMain: boolean) => unknown;
+};
+const originalLoad = loader._load;
+loader._load = function (request, parent, isMain) {
+  if (request !== "next/headers") return originalLoad.call(this, request, parent, isMain);
+  return {
+    cookies: async () => ({
+      get: (name: string) => name === "fluxo_session" && sessionToken
+        ? { name, value: sessionToken }
+        : undefined,
+    }),
+  };
+};
 
 /** Espelha o seed, sem tocar no banco. */
 const works: WorkMatcher[] = [
@@ -173,11 +194,162 @@ async function confirmToleraBloqueada() {
   console.log("OK BUG A: linha sem fornecedor entra marcada e ambas passam no schema estrito.");
 }
 
+async function identidadeCanonica() {
+  const preview = await parsePaymentFile("fluxo.xlsx", await sheetBuffer([
+    completa("ALFA", 100),
+    ["ALFA", "10/08/2026", "", 200, "", ""],
+    ["BETA", "", "sem data", 300, "MATERIAL", "EDISER"],
+  ]), works);
+  for (const row of preview.rows) {
+    assert.equal(canonicalRow(importableRowSchema.parse(row), preview.fileName).uniqueKey, row.uniqueKey);
+  }
+  const complete = importableRowSchema.parse(preview.rows[0]);
+  const forged = canonicalRow({
+    ...complete,
+    uniqueKey: "adulterada",
+    undefinedFields: ["supplier", "description", "costCenter", "category", "currentDueDate"],
+  }, preview.fileName, "2026-08-11");
+  assert.deepEqual(forged.undefinedFields, []);
+  assert.equal(forged.uniqueKey, complete.uniqueKey);
+
+  const incomplete = importableRowSchema.parse(preview.rows[1]);
+  assert.deepEqual(canonicalRow({ ...incomplete, supplierName: UNDEFINED_MARKER, undefinedFields: [] }, preview.fileName).undefinedFields,
+    ["supplier", "description", "costCenter", "category"]);
+  const missingDate = importableRowSchema.parse(preview.rows[2]);
+  assert.ok(canonicalRow(missingDate, preview.fileName, importDayIso()).undefinedFields.includes("currentDueDate"));
+  assert.ok(!canonicalRow(missingDate, preview.fileName, "2000-01-01").undefinedFields.includes("currentDueDate"));
+  console.log("OK: identidade canonica preserva o parser e reconstrui campos ausentes.");
+}
+
+async function confirmNoServidor() {
+  const { prisma } = await import("../src/lib/db");
+  const { createSessionToken } = await import("../src/lib/auth");
+  const { POST } = await import("../src/app/api/imports/confirm/route");
+  const suffix = `check-imports-${Date.now()}`;
+  const user = await prisma.user.create({ data: {
+    name: suffix, username: suffix, email: `${suffix}@local.test`,
+    passwordHash: "teste", role: Role.OPERADOR, status: UserStatus.ATIVO,
+  } });
+  let workId: string | undefined;
+  try {
+    const work = await prisma.work.create({ data: { name: suffix, slug: suffix } });
+    workId = work.id;
+    sessionToken = await createSessionToken({ ...user, provider: "local" },
+      { ipAddress: "127.0.0.1", userAgent: "check-imports", device: "script" });
+    const preview = await parsePaymentFile("confirm.xlsx", await sheetBuffer([
+      [suffix, "01/01/2000", "Compra teste", 123.45, "MATERIAL", work.name],
+    ]), [work]);
+    const row = preview.rows[0];
+    const payload = { fileName: preview.fileName, totalRows: 1, rows: [row], contributions: [] };
+    let requestNumber = 0;
+    const confirm = (body: unknown) => POST(new Request("https://fluxo.local/api/imports/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": `${suffix}-${++requestNumber}` },
+      body: JSON.stringify(body),
+    }));
+
+    const tooLarge = new Request("https://fluxo.local/api/imports/confirm", {
+      method: "POST",
+      headers: { "Content-Length": String(20 * MEGABYTE + 1), "Idempotency-Key": `${suffix}-grande` },
+      body: "JSON que nao deve ser lido",
+    });
+    assert.equal((await POST(tooLarge)).status, 413);
+    assert.equal(tooLarge.bodyUsed, false, "o limite deve ser conferido antes de ler o corpo");
+    const tooMany = await confirm({ ...payload, rows: Array.from({ length: MAX_IMPORT_ROWS + 1 }, () => row) });
+    assert.equal(tooMany.status, 400);
+    assert.match((await tooMany.json()).error, /5\.000 linhas/);
+    const tooManyContributions = await confirm({ ...payload, contributions: Array.from({ length: 501 }, () => ({
+      accountLabel: work.name, amount: 1, errors: [],
+    })) });
+    assert.equal(tooManyContributions.status, 400);
+    assert.equal(await prisma.importBatch.count({ where: { importedById: user.id } }), 0);
+    assert.equal(await prisma.idempotencyKey.count({ where: { actorId: user.id } }), 0,
+      "requisicoes recusadas devem liberar a reserva de idempotencia");
+
+    async function waitForBatch(id: string) {
+      const deadline = Date.now() + 30_000;
+      while (Date.now() < deadline) {
+        const batch = await prisma.importBatch.findUniqueOrThrow({ where: { id } });
+        assert.notEqual(batch.status, ImportStatus.FALHOU, batch.error);
+        if (batch.status === ImportStatus.CONFIRMADO && await prisma.auditLog.count({
+          where: { actorId: user.id, entityId: id, event: "IMPORT_CONFIRM" },
+        })) return batch;
+        await delay(50);
+      }
+      throw new Error(`Importacao ${id} nao terminou dentro do prazo.`);
+    }
+
+    const tampered = { ...row, uniqueKey: "adulterada", undefinedFields: [
+      "supplier", "description", "costCenter", "category", "currentDueDate",
+    ] };
+    const first = await confirm({ ...payload, totalRows: 2, rows: [
+      tampered, { ...tampered, rowNumber: row.rowNumber + 1, uniqueKey: "outra-chave" },
+    ] });
+    assert.equal(first.status, 202, JSON.stringify(await first.clone().json()));
+    const batch = await waitForBatch((await first.json()).taskId);
+    assert.equal(batch.validRows, 1, "duplicatas do payload devem ser removidas no servidor");
+    assert.equal(batch.invalidRows, 1);
+    const payments = await prisma.payment.findMany({ where: { importBatchId: batch.id } });
+    assert.equal(payments.length, 1);
+    assert.equal(payments[0].uniqueKey, row.uniqueKey, "chave completa nao leva sal forjado");
+    assert.equal(payments[0].missingInfo, "[]", "campos completos nao podem ser marcados como ausentes");
+
+    const repeated = await confirm({ ...payload, rows: [{ ...tampered, uniqueKey: "mais-uma-chave" }] });
+    assert.equal(repeated.status, 409);
+    assert.match((await repeated.json()).error, /já foram importadas/);
+    assert.equal(await prisma.payment.count({ where: { createdById: user.id } }), 1);
+
+    // Um lote anterior ao deploy continua processavel sem numero de linha.
+    const legacyRow: Partial<typeof row> = { ...row, uniqueKey: `${suffix}-legacy` };
+    delete legacyRow.rowNumber;
+    const legacyBatch = await prisma.importBatch.create({ data: {
+      status: ImportStatus.PENDENTE, fileName: suffix, sourceFileName: preview.fileName,
+      flowName: suffix, totalRows: 1, validRows: 1, invalidRows: 0, importedById: user.id,
+      payload: JSON.stringify({ rows: [legacyRow], contributions: [] }),
+    } });
+    await processImportTask(legacyBatch.id);
+    assert.equal((await waitForBatch(legacyBatch.id)).importedRows, 1);
+    console.log("OK: confirm recusa chave adulterada, deduplica o payload e aceita lotes antigos.");
+  } finally {
+    sessionToken = null;
+    await prisma.payment.deleteMany({ where: { createdById: user.id } });
+    await prisma.importBatch.deleteMany({ where: { importedById: user.id } });
+    await prisma.idempotencyKey.deleteMany({ where: { actorId: user.id } });
+    await prisma.auditLog.deleteMany({ where: { actorId: user.id } });
+    await prisma.userSession.deleteMany({ where: { userId: user.id } });
+    if (workId) await prisma.work.delete({ where: { id: workId } });
+    await prisma.user.delete({ where: { id: user.id } });
+    await prisma.$disconnect();
+    loader._load = originalLoad;
+  }
+}
+
+async function limitesDaPrevia() {
+  const rows = Array.from({ length: MAX_IMPORT_ROWS }, (_, index) => completa(`Fornecedor ${index}`, 1));
+  const csv = (lines: Cell[][]) => new TextEncoder().encode([HEADERS, ...lines]
+    .map((line) => line.join(";")).join("\n")).buffer;
+  const atLimit = await parsePaymentFile("limite.csv", csv(rows), works);
+  assert.equal(atLimit.rows.length, MAX_IMPORT_ROWS);
+  assert.equal(confirmSchema.parse(atLimit).rows.length, MAX_IMPORT_ROWS);
+  const overLimit = [...rows, completa("Excedente", 1)];
+  for (const [name, buffer] of [
+    ["limite.csv", csv(overLimit)],
+    ["limite.xlsx", await sheetBuffer(overLimit)],
+  ] as const) {
+    await assert.rejects(parsePaymentFile(name, buffer, works), (error: unknown) =>
+      error instanceof ApiError && error.status === 400 && /5\.000 linhas/.test(error.message));
+  }
+  console.log("OK: previa e confirm permitem 5.000 linhas; CSV e XLSX maiores sao recusados.");
+}
+
 async function main() {
   await truncamento();
   await incompletas();
   await chaves();
   await confirmToleraBloqueada();
+  await identidadeCanonica();
+  await limitesDaPrevia();
+  await confirmNoServidor();
   console.log("check:imports OK");
 }
 

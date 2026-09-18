@@ -53,6 +53,10 @@ obrigatório em produção.
 | `npm install` / `npm run build` | Instalação e build garantem o Prisma Client |
 | `npm start` | Aplica migrações, garante os dados iniciais e inicia o serviço |
 | `npm run lint` | ESLint |
+| `npm run typecheck` | Verifica os tipos TypeScript sem emitir arquivos |
+| `npm test` | Executa os checks automatizados; requer um PostgreSQL de teste com as migrações aplicadas |
+| `npm run check:converter` | Valida conversão e reimportação com uma amostra sintética; aceita arquivo como argumento |
+| `npm run check:migration` | Cria um banco temporário, aplica todas as migrações e verifica a precisão decimal |
 | `npm run db:migrate` | Cria/aplica migrações no desenvolvimento |
 | `npm run db:migrate:deploy` | Aplica migrações pendentes sem alterar o schema |
 | `npm run db:push` | Sincroniza o schema diretamente; use apenas como transição/prototipação |
@@ -72,27 +76,56 @@ migrações versionadas, executa o seed idempotente e então inicia o Next.js.
 Não use SQLite no filesystem padrão do Render: os arquivos gravados pelo serviço
 são efêmeros e desaparecem em reinícios e novos deploys.
 
+Antes de publicar a migração `20260918000000_decimal_precision`, execute
+`scripts/check-decimal-precision.sql` no banco de produção, em modo somente
+leitura. O resultado deve ser vazio: a consulta encontra valores que seriam
+arredondados ou que não caberiam nos novos tipos. Revise qualquer ocorrência e
+faça um backup do PostgreSQL no Render antes do deploy. A migração repete essa
+verificação e aborta sem alterar valores incompatíveis; a conversão ocorre em
+uma transação, com bloqueio das tabelas durante a operação.
+
 ## Perfis e acesso
 
-O acesso é por perfil, e cada aba do painel só existe para quem pode vê-la:
+Os cinco perfis seguem `roleLabels` e `roleDescriptions` de
+`src/lib/permissions.ts`:
 
-| | Dashboard | Indicadores | Calendário | Importação | Solicitações | Conciliação | Pagamentos | Adiantamentos | Configurações | Administração |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| **Funcionário** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | | |
-| **Gestor** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-| **Coordenador** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Perfil | Acesso |
+| --- | --- |
+| **Operador** | Acessa o painel, importa planilhas, acompanha aprovações, solicita pagamentos e faz a conciliação. |
+| **Gestor** | Opera pagamentos e adiantamentos. |
+| **Aprovador** | Aprova pagamentos e fecha fluxos em aprovação. |
+| **Administrador** | Acesso total, incluindo usuários, permissões e logs. |
+| **Colaborador** | Envia fotos de notas fiscais do cartão CAJU pelo celular. Não acessa o painel. |
 
-Todos os perfis acessam Dashboard, Indicadores, Calendário, Importação, Solicitações e Conciliação.
-A operação de pagamentos permanece restrita a Gestor e Coordenador. Coordenador
-tem acesso total, incluindo as ações críticas (cancelar e reabrir pagamento,
-gerenciar usuários e permissões).
+As 14 abas do painel seguem `tabRoles`. O Colaborador acessa somente `/notas` e
+não tem acesso a nenhuma destas abas:
+
+| Aba | Operador | Gestor | Aprovador | Administrador |
+| --- | :-: | :-: | :-: | :-: |
+| Início (`dashboard`) | ✓ | ✓ | ✓ | ✓ |
+| Indicadores (`indicadores`) | ✓ | ✓ | ✓ | ✓ |
+| Calendário (`calendario`) | ✓ | ✓ | ✓ | ✓ |
+| Importação (`importar`) | ✓ | ✓ | ✓ | ✓ |
+| Aprovados (`aprovados`) | ✓ | ✓ | ✓ | ✓ |
+| Conciliação (`conciliacao`) | ✓ | ✓ | ✓ | ✓ |
+| Solicitações (`solicitacoes`) | ✓ | ✓ | ✓ | ✓ |
+| Pagamentos (`pagamentos`) | | ✓ | ✓ | ✓ |
+| Adiantamentos (`adiantamentos`) | | ✓ | ✓ | ✓ |
+| Dispositivos (`dispositivos`) | ✓ | ✓ | ✓ | ✓ |
+| Usuários (`usuarios`) | | | | ✓ |
+| Permissões (`permissoes`) | | | | ✓ |
+| Logs (`logs`) | | | | ✓ |
+| Notas dos colaboradores (`notas-colaboradores`) | | ✓ | ✓ | ✓ |
+
+A operação de pagamentos é restrita a Gestor, Aprovador e Administrador.
+As ações disponíveis também dependem das alçadas e das regras de cada operação.
 
 ## Gestão financeira avançada
 
 - **Alçadas:** regras por faixa de valor, obra, categoria ou tag, com perfil mínimo,
   quantidade de aprovadores e bloqueio de autoaprovação. Os padrões iniciais são
-  Gestor até R$ 5 mil, Coordenador acima desse valor e dupla aprovação de
-  Coordenador para a tag `Extraordinário`.
+  Aprovador até R$ 5 mil, Administrador acima desse valor e dupla aprovação de
+  Administrador para a tag `Extraordinário`, conforme as migrações existentes.
 - **Indicadores:** gasto por fornecedor, evolução por obra (considerando rateios),
   crescimento de categorias, tempo médio de aprovação, remarcações, motivos de
   reprovação e entrega de notas no prazo.
@@ -113,10 +146,10 @@ consultada tanto pelo menu quanto pelas rotas.
 ### Entrada de usuários
 
 A tela de login tem **Solicitar acesso**. A conta nasce `PENDENTE` como
-funcionário (menor privilégio) e não entra até um coordenador aprovar e definir
-o perfil. O coordenador também pode criar contas direto, já ativas.
+Operador e não entra até um Administrador aprovar e definir
+o perfil. O Administrador também pode criar contas direto, já ativas.
 
-O sistema impede que o último coordenador ativo se rebaixe, se desative ou seja
+O sistema impede que o último Administrador ativo se rebaixe, se desative ou seja
 excluído — sem isso, dá para ficar sem ninguém capaz de gerenciar o acesso.
 A exclusão definitiva só pode ser solicitada pelo usuário `arthur`; os demais
 administradores podem desativar contas.
@@ -125,20 +158,26 @@ excluído, para não quebrar a auditoria.
 
 ## Solicitações de pagamento
 
-Antes de entrar no fluxo diário, qualquer colaborador pode abrir uma solicitação
-para uma obra à qual esteja vinculado. Fornecedor, valor, vencimento, descrição,
+Antes de entrar no fluxo diário, qualquer usuário com acesso à aba Solicitações
+pode abrir uma solicitação para uma obra permitida ao seu perfil. Fornecedor, valor, vencimento, descrição,
 obra e ao menos um anexo são obrigatórios; os anexos aceitos são PDF, JPG e PNG,
 com até 5 MB cada e no máximo cinco por solicitação.
 
-Cada obra tem um **responsável pela aprovação**, definido por um coordenador na
-aba **Permissões**. O responsável — ou um coordenador — aprova ou reprova a
-solicitação, sempre com motivo na reprovação. A aprovação registra responsável,
+Cada obra pode ter vários **responsáveis pela aprovação**, definidos por um
+Administrador na aba **Permissões** entre Gestores e Administradores ativos.
+Todos os responsáveis devem aprovar a solicitação; um Administrador também pode
+concluir a aprovação. Um responsável ou Administrador pode reprovar, sempre com
+motivo. A aprovação registra responsável,
 data e histórico, mas não cria pagamento automaticamente: a solicitação aprovada
 fica pronta para conferência e posterior inclusão no fluxo diário.
 
 ## Importação
 
 Aceita `.xlsx` e `.csv`. As colunas são reconhecidas por nome, com aliases:
+
+Cada arquivo pode conter até 5.000 linhas de pagamento e 500 aportes. A prévia
+recusa planilhas acima desses limites; a confirmação também valida as contagens
+e recusa envios cujo `Content-Length` exceda 20 MB.
 
 Antes de confirmar, o usuário pode dar um nome ao fluxo importado. Se deixar o
 campo vazio, o sistema usa `FLUXO DE PAGAMENTOS dd.MM`, considerando a data de
@@ -195,7 +234,7 @@ motivo único.
 
 Ao fechar, o sistema grava quantidades e valores finais, bloqueia novas
 alterações e libera o relatório PDF consolidado, com os pagamentos e o histórico
-do fluxo. Apenas um **Coordenador** pode reabrir um fluxo fechado, informando
+do fluxo. Apenas um **Administrador** pode reabrir um fluxo fechado, informando
 obrigatoriamente o motivo; autor, data e horário ficam registrados.
 
 Duas noções diferentes convivem, e vale não confundi-las:
@@ -225,6 +264,7 @@ src/
     api/            rotas (auth, imports, payments, dashboard, admin)
     painel/         a SPA: rota única, abas por estado
     login/
+    notas/          envio de notas pelo Colaborador
   components/
     panel/          shell, contexto e as abas
   lib/
@@ -235,8 +275,18 @@ prisma/
   schema.prisma
   seed.ts
 scripts/
-  check-converter.ts  valida a conversão e reimportação de planilhas
+  check-*.ts        checks de regras, importação, conversão, notas e integrações
+  check-migration.mjs  valida migrações em um PostgreSQL temporário
+  check-decimal-precision.sql  verificação somente leitura antes do deploy
+.github/workflows/
+  ci.yml            valida pushes e pull requests para main
 ```
+
+`npm test` reúne os checks automatizados, sem executar os scripts de limpeza
+ou o servidor de teste visual. O CI usa PostgreSQL 16 e executa `npm ci`,
+migrações, lint, typecheck, testes, `check:migration` e build. Para reproduzir,
+configure `DATABASE_URL` para um banco local de teste e `AUTH_SECRET`; o usuário
+do banco precisa poder criar bancos temporários para `check:migration`.
 
 Stack: Next 16 (App Router), React 19, TypeScript, Prisma 7 com PostgreSQL
 (`@prisma/adapter-pg`), Zod para validação, `jose` para a sessão JWT, `bcryptjs`

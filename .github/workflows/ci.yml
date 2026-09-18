@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fluxo_test
+          POSTGRES_PASSWORD: fluxo_test
+          POSTGRES_DB: fluxo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fluxo_test -d fluxo_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://fluxo_test:fluxo_test@localhost:5432/fluxo_test
+      AUTH_SECRET: fluxo-ci-only-secret-for-automated-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run db:migrate:deploy
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check:migration
+      - run: npm run build
