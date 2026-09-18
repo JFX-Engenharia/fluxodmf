@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { defaultTab } from "@/lib/permissions";
 
-// Todos os perfis entram no mesmo painel; as abas e que variam por perfil.
+// A instalação compartilhada abre a área adequada ao perfil.
 export default async function Home() {
   const session = await getSession();
-  redirect(session ? "/painel" : "/login");
+  redirect(session ? defaultTab(session.role) === "notas" ? "/notas" : "/painel" : "/login");
 }

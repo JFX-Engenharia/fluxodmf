@@ -2,10 +2,12 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "DJ Fluxo Notas",
-    short_name: "Fluxo Notas",
-    description: "Envio offline de fotos de notas fiscais do cartão CAJU.",
-    start_url: "/notas",
+    id: "/notas",
+    name: "DJ Fluxo",
+    short_name: "DJ Fluxo",
+    description: "Solicitações, aprovações de compras e envio de notas fiscais.",
+    start_url: "/",
+    scope: "/",
     display: "standalone",
     background_color: "#F5F5F5",
     theme_color: "#258F3D",

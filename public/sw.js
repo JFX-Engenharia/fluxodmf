@@ -1,5 +1,5 @@
-const HTML_CACHE = "notas-html-v1";
-const STATIC_CACHE = "notas-static";
+const HTML_CACHE = "notas-html-v2";
+const STATIC_CACHE = "notas-static-v2";
 const DB_NAME = "fluxo-notas";
 // DUPLICADO de src/lib/notas-db.ts de proposito: o service worker nao importa
 // modulo. Os dois abrem o mesmo banco, entao este numero tem que subir JUNTO —
@@ -11,7 +11,8 @@ const STORE_NAME = "queue";
 const STUCK_SENDING_MS = 2 * 60 * 1000;
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(cacheShellAndStaticAssets());
+  // Outros perfis redirecionam /notas ao painel; isso não pode impedir o push.
+  event.waitUntil(cacheShellAndStaticAssets().catch(() => undefined));
   self.skipWaiting();
 });
 
@@ -40,11 +41,15 @@ async function cacheShellAndStaticAssets() {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
+    caches.open(HTML_CACHE).then(async cache => {
+      if (!await cache.match("/notas")) return; // Preserva o shell anterior se a atualização ocorreu offline.
+      const keys = await caches.keys();
+      return Promise.all(
       keys
         .filter((key) => key.startsWith("notas-html-") && key !== HTML_CACHE)
         .map((key) => caches.delete(key)),
-    )),
+      );
+    }),
   );
   self.clients.claim();
 });
@@ -70,11 +75,13 @@ async function networkFirst(request) {
 }
 
 async function cacheFirst(request) {
-  const cached = await caches.match(request);
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
   if (cached) return cached;
-  const response = await fetch(request);
+  let response;
+  try { response = await fetch(request); }
+  catch (error) { const previous = await caches.match(request); if (previous) return previous; throw error; }
   if (response.ok) {
-    const cache = await caches.open(STATIC_CACHE);
     await cache.put(request, response.clone());
   }
   return response;
@@ -331,4 +338,37 @@ async function syncQueue() {
 
 self.addEventListener("sync", (event) => {
   if (event.tag === "notas-sync") event.waitUntil(syncQueue());
+});
+
+function requestNotificationUrl(value) {
+  try {
+    const url = new URL(value || "/painel?tab=solicitacoes", self.location.origin);
+    if (url.origin === self.location.origin && url.pathname === "/painel") return url.href;
+  } catch { /* Usa a fila como destino de notificações inválidas. */ }
+  return `${self.location.origin}/painel?tab=solicitacoes`;
+}
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data?.json() || {}; } catch { /* Notificação genérica se faltar o payload. */ }
+  event.waitUntil(self.registration.showNotification(typeof payload.title === "string" ? payload.title : "Novidade nas solicitações", {
+    body: typeof payload.body === "string" ? payload.body : "Abra o sistema para conferir suas solicitações.",
+    icon: "/icons/icon-192.png", badge: "/icons/icon-192.png",
+    tag: typeof payload.tag === "string" ? payload.tag : "payment-requests",
+    data: { url: requestNotificationUrl(payload.url) },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = requestNotificationUrl(event.notification.data?.url);
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if (new URL(client.url).origin !== self.location.origin) continue;
+      try { const navigated = await client.navigate(target); if (navigated) { await navigated.focus(); return; } }
+      catch { /* Uma janela fechada durante o clique não impede abrir outra. */ }
+    }
+    await self.clients.openWindow(target);
+  })());
 });

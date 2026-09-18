@@ -7,6 +7,7 @@ import { useFetchData } from "@/components/panel/useFetchData";
 import { DecisionDialog } from "./payment-requests/DecisionDialog";
 import { RequestCard } from "./payment-requests/RequestCard";
 import { RequestForm } from "./payment-requests/RequestForm";
+import { PushControls } from "./payment-requests/PushControls";
 import { requestsChanged, statusLabels, type Decision, type PaymentRequest, type RequestsResponse, type RequestStatus } from "./payment-requests/types";
 
 export function PaymentRequestsTab() {
@@ -46,6 +47,7 @@ export function PaymentRequestsTab() {
       <div className="request-grid">{queue.map(card)}</div>{!queue.length && <div className="panel pad muted">{loading ? "Carregando solicitações..." : "Nenhuma solicitação aguarda sua decisão."}</div>}
     </section>
     {worksError && <div className="alert error" role="alert">{worksError}</div>}
+    <PushControls />
     {data && <RequestForm works={works} settings={data.settings} onCreated={changed} />}
     <section className="section"><div className="section-header"><h2>Minhas solicitações e acompanhamentos</h2><div className="field"><label htmlFor="requests-status">Filtrar por status</label><select className="select" id="requests-status" value={status} onChange={e => setStatus(e.target.value as RequestStatus | "")}><option value="">Todos os status</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
       <div className="request-grid">{following.map(card)}</div>{!following.length && !loading && <div className="panel pad muted">Nenhuma solicitação neste filtro. As que aguardam sua decisão aparecem na fila acima.</div>}

@@ -196,7 +196,39 @@ export function PanelShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<PanelUser | null>(null);
+  const [requestPendingCount, setRequestPendingCount] = useState(0);
   const [tabs, setTabs] = useState<TabId[]>([]);
+  useEffect(() => {
+    if (!user || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
+  }, [user]);
+  useEffect(() => {
+    if (!user || !tabs.includes("solicitacoes")) return;
+    let active = true;
+    let fetching = false;
+    const refresh = async () => {
+      if (fetching || document.visibilityState !== "visible") return;
+      fetching = true;
+      try {
+        const response = await fetch("/api/payment-requests?summary=1", { cache: "no-store" });
+        if (!response.ok) return;
+        const body = await response.json();
+        if (active) setRequestPendingCount(body.pendingCount ?? 0);
+      } catch { /* Conserva o último contador conhecido durante falhas de conexão. */ }
+      finally { fetching = false; }
+    };
+    void refresh();
+    const interval = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("payment-requests-changed", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false; window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("payment-requests-changed", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [user, tabs]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
@@ -409,6 +441,7 @@ export function PanelShell() {
                       <LayoutDashboard size={17} aria-hidden="true" />
                     ) : null}
                     <span>{tab.label}</span>
+                    {tab.id === "solicitacoes" && requestPendingCount > 0 && <span className="request-pending-count" aria-label={`${requestPendingCount} pendências`}>{requestPendingCount}</span>}
                   </button>
                 ))}
 
