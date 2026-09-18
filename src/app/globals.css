@@ -4109,4 +4109,5 @@ body {
 @media (max-width: 800px) {
   .request-grid { grid-template-columns: 1fr; }
   .request-card-actions .button { flex: 1 1 auto; }
+  .request-push-controls .section-header { flex-direction: column; align-items: stretch; }
 }

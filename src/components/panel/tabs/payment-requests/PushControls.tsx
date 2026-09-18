@@ -71,7 +71,7 @@ export function PushControls() {
     } catch { setError("Não foi possível desativar os avisos. Tente novamente."); }
     finally { setBusy(false); }
   }
-  return <aside className="panel pad section" aria-label="Avisos neste aparelho">
+  return <aside className="panel pad section request-push-controls" aria-label="Avisos neste aparelho">
     <div className="section-header"><div><strong>Avisos neste aparelho</strong><p className="muted">Receba novidades das suas solicitações. Confira também as pendências no menu.</p></div>
       {state.kind === "ready" && <button className="button primary" type="button" disabled={busy} onClick={activate}>{busy ? "Ativando..." : "Ativar avisos neste aparelho"}</button>}
       {state.kind === "active" && <span className="status APROVADO" role="status">Avisos ativos</span>}

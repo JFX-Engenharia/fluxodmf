@@ -66,6 +66,9 @@ obrigatório em produção.
 | `npm run db:seed` | Cria/atualiza o usuário inicial |
 | `npm run db:reset` | **Apaga** os dados e recria o banco local do zero |
 
+Os checks de solicitações, push e migrações criam e removem bancos temporários;
+o usuário PostgreSQL usado nos testes precisa da permissão `CREATEDB`.
+
 ### Deploy no Render
 
 Crie um PostgreSQL gerenciado na mesma região do Web Service e configure nele a

@@ -48,7 +48,7 @@ export function PaymentRequestsTab() {
     </section>
     {worksError && <div className="alert error" role="alert">{worksError}</div>}
     <PushControls />
-    {data && <RequestForm works={works} settings={data.settings} onCreated={changed} />}
+    {data && works.length > 0 && <RequestForm works={works} settings={data.settings} onCreated={changed} />}
     <section className="section"><div className="section-header"><h2>Minhas solicitações e acompanhamentos</h2><div className="field"><label htmlFor="requests-status">Filtrar por status</label><select className="select" id="requests-status" value={status} onChange={e => setStatus(e.target.value as RequestStatus | "")}><option value="">Todos os status</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div></div>
       <div className="request-grid">{following.map(card)}</div>{!following.length && !loading && <div className="panel pad muted">Nenhuma solicitação neste filtro. As que aguardam sua decisão aparecem na fila acima.</div>}
     </section>
