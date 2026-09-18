@@ -8,6 +8,7 @@ import {
   DailyFlowStatus,
   ImportStatus,
   PaymentRequestStatus,
+  PaymentRequestEventType,
   PaymentStatus,
   Role,
 } from "@prisma-generated/enums";
@@ -58,7 +59,10 @@ const paymentApproval = z.object({ id: z.string(), paymentId: z.string(), actorI
 const paymentTag = z.object({ paymentId: z.string(), tagId: z.string() });
 const paymentAllocation = z.object({ id: z.string(), paymentId: z.string(), workId: z.string(), percentage: decimal, amount: decimal, source: z.nativeEnum(AllocationSource), createdAt: date, updatedAt: date });
 const advance = z.object({ id: z.string(), collaboratorName: z.string(), description: z.string(), amount: decimal, spentAmount: decimal, returnedAmount: decimal, grantedAt: date, dueDate: date, settledAt: nullableDate, status: z.nativeEnum(AdvanceStatus), notes: z.string().nullable(), documents: z.string(), workId: z.string().nullable(), createdById: z.string(), createdAt: date, updatedAt: date });
-const paymentRequest = z.object({ id: z.string(), supplierName: z.string(), description: z.string(), amount: decimal, dueDate: date, category: z.string(), workId: z.string(), requestedById: z.string(), status: z.nativeEnum(PaymentRequestStatus), reviewedById: z.string().nullable(), reviewedAt: nullableDate, reviewReason: z.string().nullable(), createdAt: date, updatedAt: date });
+const paymentRequest = z.object({ id: z.string(), supplierName: z.string(), description: z.string(), amount: decimal, dueDate: date, category: z.string(), workId: z.string(), requestedById: z.string(), status: z.nativeEnum(PaymentRequestStatus), requiresOwnerApproval: z.boolean().default(false), reviewedById: z.string().nullable(), reviewedAt: nullableDate, reviewReason: z.string().nullable(), createdAt: date, updatedAt: date });
+const requestEvent = z.object({ id: z.string(), requestId: z.string(), actorId: z.string(), type: z.nativeEnum(PaymentRequestEventType), note: z.string().nullable(), createdAt: date });
+const requestSettings = z.object({ id: z.literal("singleton"), highValueThreshold: decimal.nullable(), updatedById: z.string().nullable(), updatedAt: date });
+const highValueApprover = z.object({ userId: z.string(), createdAt: date });
 const paymentRequestApproval = z.object({ id: z.string(), requestId: z.string(), approverId: z.string(), approvedAt: nullableDate, createdAt: date });
 const requestAttachment = z.object({ id: z.string(), requestId: z.string(), fileName: z.string(), mimeType: z.string(), size: z.number(), data: z.string(), createdAt: date });
 const dailyFlow = z.object({ id: z.string(), importBatchId: z.string(), status: z.nativeEnum(DailyFlowStatus), startedById: z.string().nullable(), startedAt: nullableDate, closedById: z.string().nullable(), closedAt: nullableDate, finalSummary: z.string(), createdAt: date, updatedAt: date });
@@ -71,6 +75,7 @@ const backupSchema = z.object({
     importBatches: z.array(importBatch), contributions: z.array(contribution), payments: z.array(payment), paymentActions: z.array(paymentAction),
     attachments: z.array(attachment), paymentApprovals: z.array(paymentApproval), paymentTags: z.array(paymentTag),
     paymentAllocations: z.array(paymentAllocation), advances: z.array(advance), paymentRequests: z.array(paymentRequest),
+    paymentRequestEvents: z.array(requestEvent).default([]), paymentRequestSettings: z.array(requestSettings).max(1).default([]), highValueApprovers: z.array(highValueApprover).default([]),
     paymentRequestApprovals: z.array(paymentRequestApproval), paymentRequestAttachments: z.array(requestAttachment), dailyFlows: z.array(dailyFlow), dailyFlowEvents: z.array(dailyFlowEvent),
   }).passthrough(),
 });
@@ -87,6 +92,7 @@ export async function POST(request: Request) {
         // Operacao rara sobre um backup de tamanho arbitrario; o default
         // global de 15 s nao basta.
         const counts = await prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "PaymentRequestSettings" WHERE id = 'singleton' FOR UPDATE`;
           await tx.paymentRequestApproval.deleteMany();
           await tx.paymentRequestAttachment.deleteMany();
           await tx.paymentRequest.deleteMany();
@@ -127,6 +133,10 @@ export async function POST(request: Request) {
           await tx.paymentAllocation.createMany({ data: backup.data.paymentAllocations });
           await tx.advance.createMany({ data: backup.data.advances });
           await tx.paymentRequest.createMany({ data: backup.data.paymentRequests });
+          await tx.paymentRequestEvent.createMany({ data: backup.data.paymentRequestEvents });
+          await tx.highValueApprover.deleteMany();
+          await tx.highValueApprover.createMany({ data: backup.data.highValueApprovers });
+          await tx.paymentRequestSettings.update({ where: { id: "singleton" }, data: backup.data.paymentRequestSettings[0] ?? { highValueThreshold: null, updatedById: actor.id } });
           await tx.paymentRequestApproval.createMany({ data: backup.data.paymentRequestApprovals });
           await tx.paymentRequestAttachment.createMany({ data: backup.data.paymentRequestAttachments.map((item) => ({ ...item, data: Buffer.from(item.data, "base64") })) });
           await tx.dailyFlow.createMany({ data: backup.data.dailyFlows });

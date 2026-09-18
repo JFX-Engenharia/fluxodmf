@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import dynamic from "next/dynamic";
 import {
   ChevronDown,
   LayoutDashboard,
@@ -17,21 +18,26 @@ import { GlobalSearch } from "@/components/panel/GlobalSearch";
 import { ImportTaskWatcher } from "@/components/panel/ImportTaskWatcher";
 import { PanelContext, type PanelUser } from "@/components/panel/PanelContext";
 import { AccessibilityMenu } from "@/components/panel/ThemeSwitcher";
-import { ApprovedPaymentsTab } from "@/components/panel/tabs/ApprovedPaymentsTab";
 import { DashboardTab } from "@/components/panel/tabs/DashboardTab";
-import { DevicesTab } from "@/components/panel/tabs/DevicesTab";
-import { AdvancesTab } from "@/components/panel/tabs/AdvancesTab";
-import { AnalyticsTab } from "@/components/panel/tabs/AnalyticsTab";
-import { FinancialCalendarTab } from "@/components/panel/tabs/FinancialCalendarTab";
-import { ImportTab } from "@/components/panel/tabs/ImportTab";
-import { PaymentRequestsTab } from "@/components/panel/tabs/PaymentRequestsTab";
-import { LogsTab } from "@/components/panel/tabs/LogsTab";
-import { NotasColaboradoresTab } from "@/components/panel/tabs/NotasColaboradoresTab";
-import { PaymentsTab } from "@/components/panel/tabs/PaymentsTab";
-import { PermissionsTab } from "@/components/panel/tabs/PermissionsTab";
-import { ReconciliationTab } from "@/components/panel/tabs/ReconciliationTab";
-import { UsersTab } from "@/components/panel/tabs/UsersTab";
 import { roleLabels, TAB_IDS, type TabId } from "@/lib/permissions";
+
+function TabLoading() {
+  return <div className="panel pad">Carregando...</div>;
+}
+
+const ApprovedPaymentsTab = dynamic(() => import("@/components/panel/tabs/ApprovedPaymentsTab").then((m) => m.ApprovedPaymentsTab), { loading: TabLoading });
+const DevicesTab = dynamic(() => import("@/components/panel/tabs/DevicesTab").then((m) => m.DevicesTab), { loading: TabLoading });
+const AdvancesTab = dynamic(() => import("@/components/panel/tabs/AdvancesTab").then((m) => m.AdvancesTab), { loading: TabLoading });
+const AnalyticsTab = dynamic(() => import("@/components/panel/tabs/AnalyticsTab").then((m) => m.AnalyticsTab), { loading: TabLoading });
+const FinancialCalendarTab = dynamic(() => import("@/components/panel/tabs/FinancialCalendarTab").then((m) => m.FinancialCalendarTab), { loading: TabLoading });
+const ImportTab = dynamic(() => import("@/components/panel/tabs/ImportTab").then((m) => m.ImportTab), { loading: TabLoading });
+const PaymentRequestsTab = dynamic(() => import("@/components/panel/tabs/PaymentRequestsTab").then((m) => m.PaymentRequestsTab), { loading: TabLoading });
+const LogsTab = dynamic(() => import("@/components/panel/tabs/LogsTab").then((m) => m.LogsTab), { loading: TabLoading });
+const NotasColaboradoresTab = dynamic(() => import("@/components/panel/tabs/NotasColaboradoresTab").then((m) => m.NotasColaboradoresTab), { loading: TabLoading });
+const PaymentsTab = dynamic(() => import("@/components/panel/tabs/PaymentsTab").then((m) => m.PaymentsTab), { loading: TabLoading });
+const PermissionsTab = dynamic(() => import("@/components/panel/tabs/PermissionsTab").then((m) => m.PermissionsTab), { loading: TabLoading });
+const ReconciliationTab = dynamic(() => import("@/components/panel/tabs/ReconciliationTab").then((m) => m.ReconciliationTab), { loading: TabLoading });
+const UsersTab = dynamic(() => import("@/components/panel/tabs/UsersTab").then((m) => m.UsersTab), { loading: TabLoading });
 
 type MeResponse = {
   user: PanelUser;
@@ -92,7 +98,7 @@ const tabDefinitions: TabDefinition[] = [
     id: "solicitacoes",
     label: "Solicitações",
     title: "Solicitações de pagamento",
-    subtitle: "Envie pagamentos para aprovação da obra",
+    subtitle: "Autorize compras por alçada e acompanhe pedidos de informação",
     section: "PAINEL",
     Component: PaymentRequestsTab,
   },
@@ -190,7 +196,39 @@ export function PanelShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<PanelUser | null>(null);
+  const [requestPendingCount, setRequestPendingCount] = useState(0);
   const [tabs, setTabs] = useState<TabId[]>([]);
+  useEffect(() => {
+    if (!user || !("serviceWorker" in navigator)) return;
+    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
+  }, [user]);
+  useEffect(() => {
+    if (!user || !tabs.includes("solicitacoes")) return;
+    let active = true;
+    let fetching = false;
+    const refresh = async () => {
+      if (fetching || document.visibilityState !== "visible") return;
+      fetching = true;
+      try {
+        const response = await fetch("/api/payment-requests?summary=1", { cache: "no-store" });
+        if (!response.ok) return;
+        const body = await response.json();
+        if (active) setRequestPendingCount(body.pendingCount ?? 0);
+      } catch { /* Conserva o último contador conhecido durante falhas de conexão. */ }
+      finally { fetching = false; }
+    };
+    void refresh();
+    const interval = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("payment-requests-changed", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      active = false; window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("payment-requests-changed", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [user, tabs]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
@@ -403,6 +441,7 @@ export function PanelShell() {
                       <LayoutDashboard size={17} aria-hidden="true" />
                     ) : null}
                     <span>{tab.label}</span>
+                    {tab.id === "solicitacoes" && requestPendingCount > 0 && <span className="request-pending-count" aria-label={`${requestPendingCount} pendências`}>{requestPendingCount}</span>}
                   </button>
                 ))}
 

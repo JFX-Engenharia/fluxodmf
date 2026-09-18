@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { ApiError } from "@/lib/api";
+import { MAX_IMPORT_CONTRIBUTIONS, MAX_IMPORT_ROWS } from "@/lib/import-limits";
 import {
   canonicalAccountLabel,
   matchWork,
@@ -369,6 +371,9 @@ export async function parsePaymentFile(
   works: WorkMatcher[],
 ): Promise<ImportPreview> {
   const grid = await readGrid(fileName, arrayBuffer);
+  if (grid.paymentRows.length > MAX_IMPORT_ROWS) {
+    throw new ApiError(400, "A planilha excede o limite de 5.000 linhas. Divida o arquivo antes de importar.");
+  }
   const headers = grid.headers.filter(Boolean);
 
   const columns = {
@@ -475,6 +480,9 @@ export async function parsePaymentFile(
   });
 
   const { sheetSummary, contributions } = parseTrailingBlocks(grid.trailing, works);
+  if (contributions.length > MAX_IMPORT_CONTRIBUTIONS) {
+    throw new ApiError(400, "A planilha excede o limite de 500 aportes. Divida o arquivo antes de importar.");
+  }
   const summaryChecks = buildSummaryChecks(rows, sheetSummary, works);
   const validRows = rows.filter((row) => row.errors.length === 0);
 

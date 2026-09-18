@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isInstalledPwa, isIosDevice } from "@/lib/pwa-client";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -13,11 +14,10 @@ export function InstallHint() {
   const [ios, setIos] = useState(false);
 
   useEffect(() => {
-    const media = window.matchMedia("(display-mode: standalone)");
-    const isStandalone = media.matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    const isStandalone = isInstalledPwa();
     const updateDisplayState = window.setTimeout(() => {
       setStandalone(isStandalone);
-      setIos(/iphone|ipad|ipod/i.test(navigator.userAgent) && !isStandalone);
+      setIos(isIosDevice() && !isStandalone);
     }, 0);
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();

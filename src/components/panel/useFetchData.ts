@@ -20,7 +20,7 @@ export function useFetchData<T>(url: string) {
 
     fetch(url)
       .then(async (response) => {
-        const body = await response.json();
+        const body = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(body.error ?? "Não foi possível carregar os dados.");
         }

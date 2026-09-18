@@ -6,6 +6,7 @@ import { handleApiError } from "@/lib/api";
 import { DEVICE_COOKIE, resolveDevice } from "@/lib/device";
 import {
   createSessionToken,
+  hashPassword,
   SESSION_COOKIE,
   verifyPassword,
 } from "@/lib/auth";
@@ -17,6 +18,10 @@ const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 });
+
+// Gerado uma vez por modulo, com o mesmo custo de hashPassword (bcrypt 12).
+// Contas inexistentes tambem pagam o custo de verificar a senha.
+const DUMMY_HASH = hashPassword("fluxo-dummy-password");
 
 /** Mensagens por status, para o usuario pendente entender que falta aprovacao. */
 const statusMessages: Record<Exclude<UserStatus, "ATIVO">, string> = {
@@ -34,6 +39,7 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({ where: { username } });
 
     if (!user?.passwordHash) {
+      await verifyPassword(body.password, await DUMMY_HASH);
       await recordLoginEvent(request, {
         userId: user?.id,
         identifier: username,

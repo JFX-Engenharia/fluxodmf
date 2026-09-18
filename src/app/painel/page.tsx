@@ -3,12 +3,16 @@ import { Suspense } from "react";
 import { PanelShell } from "@/components/panel/PanelShell";
 import { getSession } from "@/lib/auth";
 import { defaultTab } from "@/lib/permissions";
+import { validRequestId } from "@/lib/request-link";
 
-export default async function PainelPage() {
+export default async function PainelPage({ searchParams }: { searchParams: Promise<{ request?: string | string[] }> }) {
   // Guarda no servidor para nao servir o shell a quem nao tem sessao. O shell
   // revalida no cliente e cada rota de API checa o perfil por conta propria.
   const session = await getSession();
-  if (!session) redirect("/login");
+  if (!session) {
+    const requestId = validRequestId((await searchParams).request);
+    redirect(requestId ? `/login?request=${encodeURIComponent(requestId)}` : "/login");
+  }
 
   // Rede de seguranca para o perfil que nao tem aba nenhuma do painel (o
   // colaborador de campo): cobre bookmark salvo e volta do OIDC, caminhos que
