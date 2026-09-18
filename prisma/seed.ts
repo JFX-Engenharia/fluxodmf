@@ -5,6 +5,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 import { Role, UserStatus } from "../generated/prisma/enums";
 import { getDatabaseUrl } from "../src/lib/database-url";
+import { seedTestUser } from "./seed-test-user";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: getDatabaseUrl() }),
@@ -59,6 +60,8 @@ async function createUserIfMissing(input: SeedUserInput) {
 
 async function main() {
   const initialCredentials: Array<{ username: string; password: string }> = [];
+  const testCredentials = await seedTestUser(prisma);
+  if (testCredentials) initialCredentials.push(testCredentials);
 
   const adminPassword = await createUserIfMissing({
     name: "Administrador",
