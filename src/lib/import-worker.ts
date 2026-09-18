@@ -17,7 +17,8 @@ import {
 } from "@/lib/cost-center";
 import { prisma } from "@/lib/db";
 import { allocationRows, chooseAllocationRule } from "@/lib/finance-management";
-import { MISSING_FIELDS, serializeMissingInfo } from "@/lib/missing-info";
+import { buildUniqueKey, importDayIso } from "@/lib/import-parser";
+import { MISSING_FIELDS, serializeMissingInfo, UNDEFINED_MARKER, type MissingField } from "@/lib/missing-info";
 
 /**
  * Forma de FIO: exatamente o que a previa mostrou, inclusive as linhas
@@ -33,6 +34,7 @@ import { MISSING_FIELDS, serializeMissingInfo } from "@/lib/missing-info";
  * codigo invalido na coluna missingInfo.
  */
 const wireRowSchema = z.object({
+  rowNumber: z.number().int().positive(),
   externalReference: z.string().optional(),
   supplierName: z.string(),
   description: z.string(),
@@ -64,6 +66,34 @@ export const importableRowSchema = wireRowSchema.extend({
   uniqueKey: z.string().min(1),
 });
 
+/** A identidade e os campos ausentes sao reconstruidos antes de consultar o banco. */
+export function canonicalRow(
+  row: z.infer<typeof importableRowSchema>,
+  fileName: string,
+  importDay = importDayIso(),
+): z.infer<typeof importableRowSchema> {
+  const undefinedFields: MissingField[] = [];
+  if (row.supplierName === UNDEFINED_MARKER) undefinedFields.push("supplier");
+  if (row.description === UNDEFINED_MARKER) undefinedFields.push("description");
+  if (row.costCenter === UNDEFINED_MARKER) undefinedFields.push("costCenter");
+  if (row.category === "") undefinedFields.push("category");
+  if (row.undefinedFields.includes("currentDueDate") && row.currentDueDate === importDay) {
+    undefinedFields.push("currentDueDate");
+  }
+
+  return {
+    ...row,
+    undefinedFields,
+    // Uma previa anterior ao deploy pode ter outra chave: sempre usamos a atual.
+    uniqueKey: buildUniqueKey({
+      ...row,
+      incompleteSalt: undefinedFields.length
+        ? `${normalizeName(fileName)}#${row.rowNumber}`
+        : undefined,
+    }),
+  };
+}
+
 const contributionSchema = z.object({
   accountLabel: z.string().min(1),
   amount: z.number().positive(),
@@ -82,7 +112,9 @@ export const confirmSchema = z.object({
 export type ConfirmImport = z.infer<typeof confirmSchema>;
 
 const taskPayloadSchema = z.object({
-  rows: z.array(importableRowSchema),
+  // Lotes enfileirados antes deste deploy nao guardavam rowNumber. O worker
+  // usa a chave ja persistida; o numero so e necessario na confirmacao.
+  rows: z.array(importableRowSchema.omit({ rowNumber: true })),
   contributions: z.array(contributionSchema),
 });
 

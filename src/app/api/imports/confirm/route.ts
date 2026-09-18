@@ -3,7 +3,8 @@ import { ImportStatus } from "@prisma-generated/enums";
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { requireMutationAllowed, requireTab } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { confirmSchema, importableRowSchema, processImportTask } from "@/lib/import-worker";
+import { canonicalRow, confirmSchema, importableRowSchema, processImportTask } from "@/lib/import-worker";
+import { importDayIso } from "@/lib/import-parser";
 import { withIdempotency } from "@/lib/idempotency";
 
 function defaultFlowName() {
@@ -47,7 +48,15 @@ export async function POST(request: Request) {
           );
         }
 
-        const validRows = z.array(importableRowSchema).parse(importable);
+        const importDay = importDayIso();
+        const seen = new Set<string>();
+        const validRows = z.array(importableRowSchema).parse(importable)
+          .map((row) => canonicalRow(row, body.fileName, importDay))
+          .filter((row) => {
+            if (seen.has(row.uniqueKey)) return false;
+            seen.add(row.uniqueKey);
+            return true;
+          });
 
         const alreadyImported = await prisma.payment.findMany({
           where: { uniqueKey: { in: validRows.map((row) => row.uniqueKey) } },
