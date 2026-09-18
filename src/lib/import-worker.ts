@@ -18,7 +18,10 @@ import {
 import { prisma } from "@/lib/db";
 import { allocationRows, chooseAllocationRule } from "@/lib/finance-management";
 import { buildUniqueKey, importDayIso } from "@/lib/import-parser";
+import { MAX_IMPORT_CONTRIBUTIONS, MAX_IMPORT_ROWS } from "@/lib/import-limits";
 import { MISSING_FIELDS, serializeMissingInfo, UNDEFINED_MARKER, type MissingField } from "@/lib/missing-info";
+
+export { MAX_IMPORT_ROWS } from "@/lib/import-limits";
 
 /**
  * Forma de FIO: exatamente o que a previa mostrou, inclusive as linhas
@@ -105,8 +108,8 @@ export const confirmSchema = z.object({
   fileName: z.string().min(1),
   importName: z.string().trim().max(120).optional(),
   totalRows: z.number().int().nonnegative(),
-  rows: z.array(wireRowSchema),
-  contributions: z.array(contributionSchema).default([]),
+  rows: z.array(wireRowSchema).max(MAX_IMPORT_ROWS, "A planilha excede o limite de 5.000 linhas."),
+  contributions: z.array(contributionSchema).max(MAX_IMPORT_CONTRIBUTIONS, "A planilha excede o limite de 500 aportes.").default([]),
 });
 
 export type ConfirmImport = z.infer<typeof confirmSchema>;

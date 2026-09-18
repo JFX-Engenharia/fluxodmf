@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ImportStatus } from "@prisma-generated/enums";
 import { ApiError, handleApiError, ok } from "@/lib/api";
 import { requireMutationAllowed, requireTab } from "@/lib/auth";
+import { assertBodySize, MEGABYTE } from "@/lib/body-size";
 import { prisma } from "@/lib/db";
 import { canonicalRow, confirmSchema, importableRowSchema, processImportTask } from "@/lib/import-worker";
 import { importDayIso } from "@/lib/import-parser";
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
       scope: "imports:confirm",
       actorId: user.id,
       execute: async () => {
+        assertBodySize(request, 20 * MEGABYTE);
         // A ordem aqui e o conserto: primeiro o schema tolerante, que aceita a
         // planilha inteira como a previa mostrou; depois o filtro; e so entao a
         // validacao estrita, sobre o que de fato vai virar compra. Validar tudo

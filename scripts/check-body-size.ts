@@ -4,10 +4,10 @@ import { assertBodySize, MEGABYTE } from "../src/lib/body-size";
 
 const LIMITE = 30 * MEGABYTE;
 
-function requestWith(contentLength: string | null) {
+function requestWith(contentLength: string | null, path = "/api/payment-requests") {
   const headers = new Headers({ "content-type": "multipart/form-data; boundary=x" });
   if (contentLength !== null) headers.set("content-length", contentLength);
-  const request = new Request("https://fluxo.local/api/payment-requests", {
+  const request = new Request(`https://fluxo.local${path}`, {
     method: "POST",
     headers,
   });
@@ -93,3 +93,11 @@ assert.match(
 );
 
 console.log("OK: Content-Length acima do teto recusado com 413; ausente ou invalido segue adiante.");
+
+const confirmLimit = 20 * MEGABYTE;
+assertBodySize(requestWith(String(confirmLimit), "/api/imports/confirm"), confirmLimit);
+const confirmTooLarge = rejection(() =>
+  assertBodySize(requestWith(String(confirmLimit + 1), "/api/imports/confirm"), confirmLimit));
+assert.equal(confirmTooLarge.status, 413);
+assert.match(confirmTooLarge.message, /excede o limite de 20 MB/);
+console.log("OK: confirm aceita 20 MB e recusa acima do teto com 413.");

@@ -13,9 +13,11 @@ import ExcelJS from "exceljs";
 import { z } from "zod";
 import { ImportStatus, Role, UserStatus } from "../generated/prisma/enums";
 import type { WorkMatcher } from "../src/lib/cost-center";
+import { ApiError } from "../src/lib/api";
+import { MEGABYTE } from "../src/lib/body-size";
 import { UNDEFINED_MARKER } from "../src/lib/missing-info";
 import { importDayIso, parsePaymentFile } from "../src/lib/import-parser";
-import { canonicalRow, confirmSchema, importableRowSchema, processImportTask } from "../src/lib/import-worker";
+import { canonicalRow, confirmSchema, importableRowSchema, MAX_IMPORT_ROWS, processImportTask } from "../src/lib/import-worker";
 
 // Mesmo adaptador de cookies de check:notas: as rotas, sessoes e banco sao reais.
 let sessionToken: string | null = null;
@@ -246,6 +248,24 @@ async function confirmNoServidor() {
       body: JSON.stringify(body),
     }));
 
+    const tooLarge = new Request("https://fluxo.local/api/imports/confirm", {
+      method: "POST",
+      headers: { "Content-Length": String(20 * MEGABYTE + 1), "Idempotency-Key": `${suffix}-grande` },
+      body: "JSON que nao deve ser lido",
+    });
+    assert.equal((await POST(tooLarge)).status, 413);
+    assert.equal(tooLarge.bodyUsed, false, "o limite deve ser conferido antes de ler o corpo");
+    const tooMany = await confirm({ ...payload, rows: Array.from({ length: MAX_IMPORT_ROWS + 1 }, () => row) });
+    assert.equal(tooMany.status, 400);
+    assert.match((await tooMany.json()).error, /5\.000 linhas/);
+    const tooManyContributions = await confirm({ ...payload, contributions: Array.from({ length: 501 }, () => ({
+      accountLabel: work.name, amount: 1, errors: [],
+    })) });
+    assert.equal(tooManyContributions.status, 400);
+    assert.equal(await prisma.importBatch.count({ where: { importedById: user.id } }), 0);
+    assert.equal(await prisma.idempotencyKey.count({ where: { actorId: user.id } }), 0,
+      "requisicoes recusadas devem liberar a reserva de idempotencia");
+
     async function waitForBatch(id: string) {
       const deadline = Date.now() + 30_000;
       while (Date.now() < deadline) {
@@ -304,12 +324,31 @@ async function confirmNoServidor() {
   }
 }
 
+async function limitesDaPrevia() {
+  const rows = Array.from({ length: MAX_IMPORT_ROWS }, (_, index) => completa(`Fornecedor ${index}`, 1));
+  const csv = (lines: Cell[][]) => new TextEncoder().encode([HEADERS, ...lines]
+    .map((line) => line.join(";")).join("\n")).buffer;
+  const atLimit = await parsePaymentFile("limite.csv", csv(rows), works);
+  assert.equal(atLimit.rows.length, MAX_IMPORT_ROWS);
+  assert.equal(confirmSchema.parse(atLimit).rows.length, MAX_IMPORT_ROWS);
+  const overLimit = [...rows, completa("Excedente", 1)];
+  for (const [name, buffer] of [
+    ["limite.csv", csv(overLimit)],
+    ["limite.xlsx", await sheetBuffer(overLimit)],
+  ] as const) {
+    await assert.rejects(parsePaymentFile(name, buffer, works), (error: unknown) =>
+      error instanceof ApiError && error.status === 400 && /5\.000 linhas/.test(error.message));
+  }
+  console.log("OK: previa e confirm permitem 5.000 linhas; CSV e XLSX maiores sao recusados.");
+}
+
 async function main() {
   await truncamento();
   await incompletas();
   await chaves();
   await confirmToleraBloqueada();
   await identidadeCanonica();
+  await limitesDaPrevia();
   await confirmNoServidor();
   console.log("check:imports OK");
 }
