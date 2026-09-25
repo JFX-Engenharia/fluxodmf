@@ -45,6 +45,29 @@ no momento em que cria a conta. Troque a senha no primeiro login.
 Gere também um `AUTH_SECRET` longo e aleatório — é ele que assina a sessão e é
 obrigatório em produção.
 
+### Acesso de teste local
+
+Para criar a conta `teste`, configure no `.env` e execute `npm run db:seed`:
+
+```dotenv
+SEED_TEST_USER="true"
+SEED_TEST_PASSWORD="sua-senha-de-teste-com-10-ou-mais-caracteres"
+```
+
+Ela recebe o perfil **Administrador**, com todas as abas do painel, e entra nos
+designados para aprovar solicitações de alto valor, inclusive as abertas antes
+do seed. O limite configurado e os demais designados são preservados. As regras
+de negócio, como aprovação por mais de uma pessoa quando exigida, continuam valendo.
+O envio de notas em `/notas` continua exclusivo do perfil Colaborador; a exclusão
+definitiva de contas continua exclusiva de `arthur`.
+
+Se `SEED_TEST_PASSWORD` ficar vazia, o seed gera uma senha e a mostra apenas na
+criação. Execuções seguintes não trocam a senha nem reativam a conta. A criação
+é opcional, vem desligada e só funciona com PostgreSQL em `localhost`,
+`127.0.0.1` ou `::1`, fora de `NODE_ENV=production`. Não configure essas variáveis
+no Render. Para impedir novos ajustes pelo seed, volte `SEED_TEST_USER` para
+`false`; para revogar o acesso já criado, desative a conta na aba Usuários.
+
 ### Scripts
 
 | Comando | O que faz |
@@ -59,6 +82,7 @@ obrigatório em produção.
 | `npm run check:migration` | Cria um banco temporário, aplica todas as migrações e verifica a precisão decimal |
 | `npm run check:payment-requests` | Testa alçada, conversa, anexos e decisões concorrentes em um banco temporário |
 | `npm run check:push` | Testa inscrições, expiração, falhas e service worker, sem chamar serviços externos |
+| `npm run check:seed` | Testa a conta local opcional, sua senha, alçada e bloqueios em banco temporário |
 | `npm run db:migrate` | Cria/aplica migrações no desenvolvimento |
 | `npm run db:migrate:deploy` | Aplica migrações pendentes sem alterar o schema |
 | `npm run db:push` | Sincroniza o schema diretamente; use apenas como transição/prototipação |
