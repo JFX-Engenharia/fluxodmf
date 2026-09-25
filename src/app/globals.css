@@ -253,6 +253,12 @@ textarea:disabled {
   flex-wrap: wrap;
 }
 
+/* Acoes do fluxo diario empilhadas: "Apagar fluxo" fica abaixo de "Fechar fluxo". */
+.button-row.flow-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 .button {
   font-family: var(--font-ui);
   min-height: 44px;
