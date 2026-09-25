@@ -315,6 +315,7 @@ export async function DELETE(request: Request) {
       actions,
       imports,
       flowEvents,
+      requestEvents,
       requestedPayments,
       reviewedRequests,
       workApprovals,
@@ -327,6 +328,7 @@ export async function DELETE(request: Request) {
       prisma.paymentAction.count({ where: { actorId: target.id } }),
       prisma.importBatch.count({ where: { importedById: target.id } }),
       prisma.dailyFlowEvent.count({ where: { actorId: target.id } }),
+      prisma.paymentRequestEvent.count({ where: { actorId: target.id } }),
       prisma.paymentRequest.count({ where: { requestedById: target.id } }),
       prisma.paymentRequest.count({ where: { reviewedById: target.id } }),
       prisma.workApprover.count({ where: { userId: target.id } }),
@@ -341,6 +343,7 @@ export async function DELETE(request: Request) {
         actions +
         imports +
         flowEvents +
+        requestEvents +
         requestedPayments +
         reviewedRequests +
         workApprovals +
@@ -373,6 +376,7 @@ export async function DELETE(request: Request) {
           where: { actorId: target.id },
           data: { actorId: sentinel.id },
         });
+        await tx.paymentRequestEvent.updateMany({ where: { actorId: target.id }, data: { actorId: sentinel.id } });
         await tx.paymentRequest.updateMany({
           where: { requestedById: target.id },
           data: { requestedById: sentinel.id },

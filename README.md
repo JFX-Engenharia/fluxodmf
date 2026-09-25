@@ -45,6 +45,29 @@ no momento em que cria a conta. Troque a senha no primeiro login.
 Gere também um `AUTH_SECRET` longo e aleatório — é ele que assina a sessão e é
 obrigatório em produção.
 
+### Acesso de teste local
+
+Para criar a conta `teste`, configure no `.env` e execute `npm run db:seed`:
+
+```dotenv
+SEED_TEST_USER="true"
+SEED_TEST_PASSWORD="sua-senha-de-teste-com-10-ou-mais-caracteres"
+```
+
+Ela recebe o perfil **Administrador**, com todas as abas do painel, e entra nos
+designados para aprovar solicitações de alto valor, inclusive as abertas antes
+do seed. O limite configurado e os demais designados são preservados. As regras
+de negócio, como aprovação por mais de uma pessoa quando exigida, continuam valendo.
+O envio de notas em `/notas` continua exclusivo do perfil Colaborador; a exclusão
+definitiva de contas continua exclusiva de `arthur`.
+
+Se `SEED_TEST_PASSWORD` ficar vazia, o seed gera uma senha e a mostra apenas na
+criação. Execuções seguintes não trocam a senha nem reativam a conta. A criação
+é opcional, vem desligada e só funciona com PostgreSQL em `localhost`,
+`127.0.0.1` ou `::1`, fora de `NODE_ENV=production`. Não configure essas variáveis
+no Render. Para impedir novos ajustes pelo seed, volte `SEED_TEST_USER` para
+`false`; para revogar o acesso já criado, desative a conta na aba Usuários.
+
 ### Scripts
 
 | Comando | O que faz |
@@ -53,12 +76,22 @@ obrigatório em produção.
 | `npm install` / `npm run build` | Instalação e build garantem o Prisma Client |
 | `npm start` | Aplica migrações, garante os dados iniciais e inicia o serviço |
 | `npm run lint` | ESLint |
+| `npm run typecheck` | Verifica os tipos TypeScript sem emitir arquivos |
+| `npm test` | Executa os checks automatizados; requer um PostgreSQL de teste com as migrações aplicadas |
+| `npm run check:converter` | Valida conversão e reimportação com uma amostra sintética; aceita arquivo como argumento |
+| `npm run check:migration` | Cria um banco temporário, aplica todas as migrações e verifica a precisão decimal |
+| `npm run check:payment-requests` | Testa alçada, conversa, anexos e decisões concorrentes em um banco temporário |
+| `npm run check:push` | Testa inscrições, expiração, falhas e service worker, sem chamar serviços externos |
+| `npm run check:seed` | Testa a conta local opcional, sua senha, alçada e bloqueios em banco temporário |
 | `npm run db:migrate` | Cria/aplica migrações no desenvolvimento |
 | `npm run db:migrate:deploy` | Aplica migrações pendentes sem alterar o schema |
 | `npm run db:push` | Sincroniza o schema diretamente; use apenas como transição/prototipação |
 | `npm run db:setup` | Aplica migrações e garante os dados iniciais |
 | `npm run db:seed` | Cria/atualiza o usuário inicial |
 | `npm run db:reset` | **Apaga** os dados e recria o banco local do zero |
+
+Os checks de solicitações, push e migrações criam e removem bancos temporários;
+o usuário PostgreSQL usado nos testes precisa da permissão `CREATEDB`.
 
 ### Deploy no Render
 
@@ -72,27 +105,59 @@ migrações versionadas, executa o seed idempotente e então inicia o Next.js.
 Não use SQLite no filesystem padrão do Render: os arquivos gravados pelo serviço
 são efêmeros e desaparecem em reinícios e novos deploys.
 
+Antes de publicar a migração `20260918000000_decimal_precision`, execute
+`scripts/check-decimal-precision.sql` no banco de produção, em modo somente
+leitura. O resultado deve ser vazio: a consulta encontra valores que seriam
+arredondados ou que não caberiam nos novos tipos. Revise qualquer ocorrência e
+faça um backup do PostgreSQL no Render antes do deploy. A migração repete essa
+verificação e aborta sem alterar valores incompatíveis; a conversão ocorre em
+uma transação, com bloqueio das tabelas durante a operação.
+
 ## Perfis e acesso
 
-O acesso é por perfil, e cada aba do painel só existe para quem pode vê-la:
+Os cinco perfis seguem `roleLabels` e `roleDescriptions` de
+`src/lib/permissions.ts`:
 
-| | Dashboard | Indicadores | Calendário | Importação | Solicitações | Conciliação | Pagamentos | Adiantamentos | Configurações | Administração |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
-| **Funcionário** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | | | |
-| **Gestor** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | |
-| **Coordenador** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Perfil | Acesso |
+| --- | --- |
+| **Operador** | Acessa o painel, importa planilhas, acompanha aprovações, solicita pagamentos e faz a conciliação. |
+| **Gestor** | Opera pagamentos e adiantamentos. |
+| **Aprovador** | Aprova pagamentos e fecha fluxos em aprovação. |
+| **Administrador** | Acesso total, incluindo usuários, permissões e logs. |
+| **Colaborador** | Envia fotos de notas fiscais do cartão CAJU pelo celular. Não acessa o painel. |
 
-Todos os perfis acessam Dashboard, Indicadores, Calendário, Importação, Solicitações e Conciliação.
-A operação de pagamentos permanece restrita a Gestor e Coordenador. Coordenador
-tem acesso total, incluindo as ações críticas (cancelar e reabrir pagamento,
-gerenciar usuários e permissões).
+As 14 abas do painel seguem `tabRoles`. O Colaborador acessa somente `/notas` e
+não tem acesso a nenhuma destas abas:
+
+| Aba | Operador | Gestor | Aprovador | Administrador |
+| --- | :-: | :-: | :-: | :-: |
+| Início (`dashboard`) | ✓ | ✓ | ✓ | ✓ |
+| Indicadores (`indicadores`) | ✓ | ✓ | ✓ | ✓ |
+| Calendário (`calendario`) | ✓ | ✓ | ✓ | ✓ |
+| Importação (`importar`) | ✓ | ✓ | ✓ | ✓ |
+| Aprovados (`aprovados`) | ✓ | ✓ | ✓ | ✓ |
+| Conciliação (`conciliacao`) | ✓ | ✓ | ✓ | ✓ |
+| Solicitações (`solicitacoes`) | ✓ | ✓ | ✓ | ✓ |
+| Pagamentos (`pagamentos`) | | ✓ | ✓ | ✓ |
+| Adiantamentos (`adiantamentos`) | | ✓ | ✓ | ✓ |
+| Dispositivos (`dispositivos`) | ✓ | ✓ | ✓ | ✓ |
+| Usuários (`usuarios`) | | | | ✓ |
+| Permissões (`permissoes`) | | | | ✓ |
+| Logs (`logs`) | | | | ✓ |
+| Notas dos colaboradores (`notas-colaboradores`) | | ✓ | ✓ | ✓ |
+
+A operação de pagamentos é restrita a Gestor, Aprovador e Administrador.
+As ações disponíveis também dependem das alçadas e das regras de cada operação.
+Em Solicitações, o Administrador configura a alçada e acompanha todos os pedidos,
+mas só decide pedidos de alto valor se também for designado. Operadores, Gestores,
+Aprovadores e Administradores ativos podem ser designados; o Dono não é um perfil novo.
 
 ## Gestão financeira avançada
 
 - **Alçadas:** regras por faixa de valor, obra, categoria ou tag, com perfil mínimo,
   quantidade de aprovadores e bloqueio de autoaprovação. Os padrões iniciais são
-  Gestor até R$ 5 mil, Coordenador acima desse valor e dupla aprovação de
-  Coordenador para a tag `Extraordinário`.
+  Aprovador até R$ 5 mil, Administrador acima desse valor e dupla aprovação de
+  Administrador para a tag `Extraordinário`, conforme as migrações existentes.
 - **Indicadores:** gasto por fornecedor, evolução por obra (considerando rateios),
   crescimento de categorias, tempo médio de aprovação, remarcações, motivos de
   reprovação e entrega de notas no prazo.
@@ -113,10 +178,10 @@ consultada tanto pelo menu quanto pelas rotas.
 ### Entrada de usuários
 
 A tela de login tem **Solicitar acesso**. A conta nasce `PENDENTE` como
-funcionário (menor privilégio) e não entra até um coordenador aprovar e definir
-o perfil. O coordenador também pode criar contas direto, já ativas.
+Operador e não entra até um Administrador aprovar e definir
+o perfil. O Administrador também pode criar contas direto, já ativas.
 
-O sistema impede que o último coordenador ativo se rebaixe, se desative ou seja
+O sistema impede que o último Administrador ativo se rebaixe, se desative ou seja
 excluído — sem isso, dá para ficar sem ninguém capaz de gerenciar o acesso.
 A exclusão definitiva só pode ser solicitada pelo usuário `arthur`; os demais
 administradores podem desativar contas.
@@ -125,20 +190,100 @@ excluído, para não quebrar a auditoria.
 
 ## Solicitações de pagamento
 
-Antes de entrar no fluxo diário, qualquer colaborador pode abrir uma solicitação
-para uma obra à qual esteja vinculado. Fornecedor, valor, vencimento, descrição,
-obra e ao menos um anexo são obrigatórios; os anexos aceitos são PDF, JPG e PNG,
-com até 5 MB cada e no máximo cinco por solicitação.
+Depois da negociação, quem acessa a aba pode solicitar autorização para pagar em
+uma obra vinculada à sua conta (o Administrador pode usar qualquer obra ativa).
+Fornecedor, valor, vencimento, descrição, obra e ao menos um anexo são obrigatórios.
+Na criação, são aceitos de um a cinco arquivos PDF, JPG ou PNG de até 5 MB cada,
+com validação do conteúdo e idempotência do envio.
 
-Cada obra tem um **responsável pela aprovação**, definido por um coordenador na
-aba **Permissões**. O responsável — ou um coordenador — aprova ou reprova a
-solicitação, sempre com motivo na reprovação. A aprovação registra responsável,
-data e histórico, mas não cria pagamento automaticamente: a solicitação aprovada
-fica pronta para conferência e posterior inclusão no fluxo diário.
+Em **Permissões → Aprovação de alto valor**, o Administrador define o limite e
+designa o Dono e seus substitutos, entre usuários ativos que não sejam Colaboradores.
+A regra começa desligada (`highValueThreshold = null`).
+
+| Valor na criação | Quem decide |
+| --- | --- |
+| Até o limite, ou regra desligada | Todos os responsáveis ativos da obra; permanece a possibilidade de conclusão pelo Administrador |
+| Acima do limite | Vai direto aos designados de alto valor, sem aprovação intermediária da obra; uma aprovação de qualquer designado conclui |
+
+Sem aprovador ativo, o envio é recusado. O Administrador não designado pode ver e
+cancelar pedidos de alto valor, mas não aprovar, reprovar ou pedir informação.
+Alterar o limite só afeta novos pedidos: `requiresOwnerApproval` guarda o caminho
+decidido na criação. Trocar os designados atualiza as aprovações dos pedidos de
+alto valor em `PENDENTE` ou `INFO_SOLICITADA`, preservando os já encerrados. A
+configuração não permite deixar esses pedidos abertos sem designados.
+
+A fila **Aguardando sua decisão** apresenta cartões por vencimento. Aprovar aceita
+observação opcional; reprovar exige motivo. **Pedir informação** exige texto e
+suspende a decisão até o solicitante responder. A resposta pode incluir novos
+anexos, até dez no total da solicitação. Podem existir várias rodadas de pergunta
+e resposta, todas visíveis no histórico com autor, data e nota. O solicitante e o
+Administrador podem cancelar enquanto o pedido estiver pendente ou aguardando
+informação. Para mudar o valor, cancele e envie outro pedido.
+
+Decisão, anexos da resposta, evento e auditoria são gravados na mesma transação;
+decisões concorrentes conflitantes retornam 409. A aprovação registra a autorização
+e não cria `Payment` no fluxo diário. O backup administrativo inclui o caminho de
+aprovação, a configuração e os eventos; backups anteriores continuam aceitos.
+
+### Avisos no celular e no desktop
+
+O Web Push avisa os aprovadores quando a solicitação é criada, avisa o solicitante
+quando há aprovação, reprovação ou pedido de informação, e avisa os aprovadores
+pendentes após uma resposta. A notificação mostra obra e valor; fornecedor,
+anexos e conversa ficam dentro do aplicativo. Ao tocar, abre o cartão destacado,
+preservando o destino se for necessário entrar novamente.
+
+Para habilitar no **Render**, gere o par uma única vez:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Cadastre `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT` (um contato
+`mailto:administrador@empresa.com.br`) nas variáveis do Web Service. No ambiente
+local, use o `.env` ignorado pelo Git. Conserve as chaves entre deploys e mantenha
+a privada apenas no servidor. Sem uma configuração válida, os avisos ficam
+desligados e todas as funções de aprovação continuam disponíveis. Não é necessário
+liberar serviços externos no `connect-src` do navegador; o envio sai do servidor.
+O endpoint de inscrição aceita serviços de push do Google, Mozilla, Microsoft e
+Apple, exige autenticação e limita cada usuário a dez aparelhos.
+
+1. **Android:** abra o endereço HTTPS no Chrome, Edge ou Samsung Internet. Use
+   a opção de instalar/adicionar à tela inicial no menu do navegador, se desejar.
+   Entre na aba Solicitações e toque em **Ativar avisos neste aparelho**; permita
+   as notificações quando solicitado.
+2. **iPhone/iPad (16.4+):** abra no Safari, toque em Compartilhar → **Adicionar à
+   Tela de Início**. Abra pelo ícone instalado, entre na conta e ative os avisos
+   dentro do aplicativo. A página aberta fora do aplicativo mostra essa orientação.
+3. **Desktop:** use HTTPS ou localhost, abra Solicitações e ative os avisos. Para
+   desligar somente neste navegador, use **Desativar avisos**. Se a permissão foi
+   negada, reative nas permissões do site ou nos ajustes do aplicativo.
+
+O manifesto abre `/`, que encaminha Colaboradores a `/notas` e os outros perfis
+ao painel. A identidade anterior do PWA é preservada para instalações existentes.
+Em aparelhos compartilhados, ativar avisos em outra conta transfere a inscrição
+para essa conta. Usuários inativos não recebem envios. Inscrições são removidas
+quando o serviço informa expiração (404/410); falhas temporárias são registradas
+sem cancelar a operação. Os envios ocorrem depois do commit, sem garantia de
+entrega ou fila de repetição. O contador do menu continua disponível e atualiza
+a cada 30 segundos, ao retornar à janela e após alterações feitas na aba.
+
+Validação em aparelho real: instale o PWA, ative os avisos, feche o aplicativo,
+crie uma compra acima do limite por outra conta, toque no aviso e aprove. Confira
+o aviso da decisão no aparelho do solicitante. Repita no iPhone instalado, quando
+usado pela equipe. Restrições de bateria e permissões do sistema podem impedir
+avisos; confira sempre a fila. Os testes automatizados usam transporte simulado.
+
+Referências: [Web Push no WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)
+e [biblioteca web-push](https://github.com/web-push-libs/web-push).
 
 ## Importação
 
 Aceita `.xlsx` e `.csv`. As colunas são reconhecidas por nome, com aliases:
+
+Cada arquivo pode conter até 5.000 linhas de pagamento e 500 aportes. A prévia
+recusa planilhas acima desses limites; a confirmação também valida as contagens
+e recusa envios cujo `Content-Length` exceda 20 MB.
 
 Antes de confirmar, o usuário pode dar um nome ao fluxo importado. Se deixar o
 campo vazio, o sistema usa `FLUXO DE PAGAMENTOS dd.MM`, considerando a data de
@@ -195,7 +340,7 @@ motivo único.
 
 Ao fechar, o sistema grava quantidades e valores finais, bloqueia novas
 alterações e libera o relatório PDF consolidado, com os pagamentos e o histórico
-do fluxo. Apenas um **Coordenador** pode reabrir um fluxo fechado, informando
+do fluxo. Apenas um **Administrador** pode reabrir um fluxo fechado, informando
 obrigatoriamente o motivo; autor, data e horário ficam registrados.
 
 Duas noções diferentes convivem, e vale não confundi-las:
@@ -225,6 +370,7 @@ src/
     api/            rotas (auth, imports, payments, dashboard, admin)
     painel/         a SPA: rota única, abas por estado
     login/
+    notas/          envio de notas pelo Colaborador
   components/
     panel/          shell, contexto e as abas
   lib/
@@ -235,8 +381,18 @@ prisma/
   schema.prisma
   seed.ts
 scripts/
-  check-converter.ts  valida a conversão e reimportação de planilhas
+  check-*.ts        checks de regras, importação, conversão, notas e integrações
+  check-migration.mjs  valida migrações em um PostgreSQL temporário
+  check-decimal-precision.sql  verificação somente leitura antes do deploy
+.github/workflows/
+  ci.yml            valida pushes e pull requests para main
 ```
+
+`npm test` reúne os checks automatizados, sem executar os scripts de limpeza
+ou o servidor de teste visual. O CI usa PostgreSQL 16 e executa `npm ci`,
+migrações, lint, typecheck, testes, `check:migration` e build. Para reproduzir,
+configure `DATABASE_URL` para um banco local de teste e `AUTH_SECRET`; o usuário
+do banco precisa poder criar bancos temporários para `check:migration`.
 
 Stack: Next 16 (App Router), React 19, TypeScript, Prisma 7 com PostgreSQL
 (`@prisma/adapter-pg`), Zod para validação, `jose` para a sessão JWT, `bcryptjs`

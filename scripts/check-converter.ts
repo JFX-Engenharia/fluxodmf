@@ -1,11 +1,12 @@
 /**
- * Exercita o conversor contra a planilha bruta real e confere que o arquivo
+ * Exercita o conversor contra uma planilha sintetica ou um arquivo informado e confere que o arquivo
  * gerado volta pelo importador: converter e importar tem que concordar, senao
  * o usuario baixa um fluxo que o proprio sistema recusa.
  *
- * Uso: npx tsx scripts/check-converter.ts <planilha-bruta> [saida.xlsx]
+ * Uso: npm run check:converter -- [planilha-bruta] [saida.xlsx]
  */
 
+import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { buildFlowWorkbook, convertRawFile } from "../src/lib/flow-converter";
@@ -34,15 +35,23 @@ const brl = (value: number) =>
 
 async function main() {
   const [source, output] = process.argv.slice(2);
-  if (!source) throw new Error("Informe a planilha bruta.");
-
-  const buffer = await readFile(source);
+  const buffer = source ? await readFile(source) : Buffer.from([
+    "Nome do fornecedor;Data de vencimento;Descricao;Valor original da parcela (R$);Categoria 1;Centro de Custo 1",
+    "Fornecedor Alfa;10/08/2026;Material de teste;123,45;MATERIAL;EDISER",
+    "Fornecedor Beta;11/08/2026;Servico de teste;200,10;SERVICO;RECAP",
+    "Fornecedor Gama;12/08/2026;Despesa de teste;50,25;DESPESA;Despesa Pessoal Jeronimo",
+  ].join("\n"));
   const arrayBuffer = buffer.buffer.slice(
     buffer.byteOffset,
     buffer.byteOffset + buffer.byteLength,
   ) as ArrayBuffer;
 
-  const conversion = await convertRawFile(source.split(/[/\\]/).pop() ?? source, arrayBuffer, works);
+  const conversion = await convertRawFile(source?.split(/[/\\]/).pop() ?? "amostra.csv", arrayBuffer, works);
+  if (!source) {
+    assert.equal(conversion.validRows, 3);
+    assert.equal(conversion.totalAmount, 373.8);
+    assert.equal(conversion.accounts.length, 3);
+  }
 
   console.log("=== CONVERSAO ===");
   console.log("arquivo sugerido :", conversion.suggestedFileName);
@@ -74,9 +83,9 @@ async function main() {
   }));
 
   const workbook = await buildFlowWorkbook(conversion, aportes);
-  const target = output ?? conversion.suggestedFileName;
-  writeFileSync(target, workbook);
-  console.log("\ngerado           :", target, `(${workbook.byteLength} bytes)`);
+  const target = output ?? (source ? conversion.suggestedFileName : undefined);
+  if (target) writeFileSync(target, workbook);
+  console.log("\ngerado           :", target ?? "em memoria", `(${workbook.byteLength} bytes)`);
 
   // A prova real: o arquivo gerado tem que passar pelo importador do fluxo.
   const arrayBufferOut = workbook.buffer.slice(

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma-generated/client";
 
 type AuditEntry = {
   actorId?: string;
@@ -31,8 +32,8 @@ export async function auditLogMany(entries: AuditEntry[]) {
   });
 }
 
-export async function auditLog(input: AuditEntry) {
-  await prisma.auditLog.create({
+export async function auditLog(input: AuditEntry, client: Prisma.TransactionClient = prisma) {
+  await client.auditLog.create({
     data: {
       actorId: input.actorId,
       event: input.event,

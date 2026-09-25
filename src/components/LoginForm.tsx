@@ -4,6 +4,7 @@ import { Building2, Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/lib/password-policy";
+import { requestDestination } from "@/lib/request-link";
 
 type LoginResponse = {
   user?: { id: string; role?: string };
@@ -33,9 +34,10 @@ const corporateMessages: Record<string, string> = {
 
 type LoginFormProps = {
   corporateStatus?: string;
+  requestId?: string;
 };
 
-export function LoginForm({ corporateStatus }: LoginFormProps) {
+export function LoginForm({ corporateStatus, requestId }: LoginFormProps) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
@@ -93,7 +95,7 @@ export function LoginForm({ corporateStatus }: LoginFormProps) {
         return;
       }
 
-      router.replace(data.user.role === "COLABORADOR" ? "/notas" : "/painel");
+      router.replace(data.user.role === "COLABORADOR" ? "/notas" : requestDestination(requestId));
     } catch {
       setError("Falha de conexão. Tente novamente.");
     } finally {
@@ -243,7 +245,7 @@ export function LoginForm({ corporateStatus }: LoginFormProps) {
         {loading ? "Entrando..." : "Entrar"}
       </button>
       {corporate.enabled ? (
-        <a className="button secondary" href="/api/auth/oidc/start">
+        <a className="button secondary" href={requestId ? `/api/auth/oidc/start?request=${encodeURIComponent(requestId)}` : "/api/auth/oidc/start"}>
           <Building2 size={16} />
           Entrar com {corporate.providerName ?? "conta corporativa"}
         </a>

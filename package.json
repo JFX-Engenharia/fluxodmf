@@ -11,6 +11,11 @@
     "build": "next build",
     "start": "npm run db:setup && next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run check:seed && npm run check:finance && npm run check:session-info && npm run check:file-signature && npm run check:body-size && npm run check:imports && npm run check:converter && npm run check:reconciliation && npm run check:payment-requests && npm run check:push && npm run check:payment-batch && npm run check:notas",
+    "check:seed": "tsx --env-file-if-exists=.env scripts/check-seed.ts",
+    "check:push": "tsx --env-file-if-exists=.env scripts/check-push.ts",
+    "check:converter": "tsx --env-file-if-exists=.env scripts/check-converter.ts",
     "check:finance": "tsx --env-file-if-exists=.env scripts/check-finance-management.ts",
     "check:payment-requests": "tsx --env-file-if-exists=.env scripts/check-payment-requests.ts",
     "check:reconciliation": "tsx --env-file-if-exists=.env scripts/check-reconciliation.ts",
@@ -63,6 +68,7 @@
     "pg": "^8.22.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -70,6 +76,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.3.0",
     "prisma": "^7.8.0",
