@@ -13,6 +13,7 @@ import {
   Search,
   Split,
   Tags,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -204,6 +205,8 @@ export function PaymentsTab() {
   const [flowBusy, setFlowBusy] = useState(false);
   const [flowReopenOpen, setFlowReopenOpen] = useState(false);
   const [flowReason, setFlowReason] = useState("");
+  const [flowDeleteOpen, setFlowDeleteOpen] = useState(false);
+  const [flowDeleteReason, setFlowDeleteReason] = useState("");
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [metadataTags, setMetadataTags] = useState<string[]>([]);
   const [metadataAllocations, setMetadataAllocations] = useState<Record<string, string>>({});
@@ -276,6 +279,38 @@ export function PaymentsTab() {
       reload();
     } catch {
       setError("Falha de conexão ao atualizar o fluxo diário.");
+    } finally {
+      setFlowBusy(false);
+    }
+  }
+
+  async function deleteFlow() {
+    if (!selectedFlow) return;
+    setFlowBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/daily-flows/${selectedFlow.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: flowDeleteReason }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.error ?? "Não foi possível apagar o fluxo diário.");
+        return;
+      }
+
+      setFlowDeleteOpen(false);
+      setFlowDeleteReason("");
+      setFlowId("");
+      setBatch([]);
+      setMessage("Fluxo diário apagado.");
+      reloadFlows();
+      reload();
+    } catch {
+      setError("Falha de conexão ao apagar o fluxo diário.");
     } finally {
       setFlowBusy(false);
     }
@@ -550,7 +585,7 @@ export function PaymentsTab() {
                 </small>
               ) : null}
             </div>
-            <div className="button-row">
+            <div className="button-row flow-actions">
               {selectedFlow.status !== "FECHADO" && canConcludeFlow ? (
                 <button
                   className="button success"
@@ -565,6 +600,18 @@ export function PaymentsTab() {
                 >
                   <LockKeyhole size={16} />
                   Fechar fluxo
+                </button>
+              ) : null}
+              {selectedFlow.status !== "FECHADO" && isCoordinator ? (
+                <button
+                  className="button danger"
+                  type="button"
+                  onClick={() => setFlowDeleteOpen(true)}
+                  disabled={flowBusy}
+                  title="Apagar o fluxo diário e os pagamentos importados nele"
+                >
+                  <Trash2 size={16} />
+                  Apagar fluxo
                 </button>
               ) : null}
               {selectedFlow.status === "FECHADO" ? (
@@ -1272,6 +1319,57 @@ export function PaymentsTab() {
                 onClick={() => {
                   setFlowReopenOpen(false);
                   setFlowReason("");
+                }}
+                disabled={flowBusy}
+              >
+                Voltar
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {flowDeleteOpen ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-flow-title"
+        >
+          <form
+            className="modal"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void deleteFlow();
+            }}
+          >
+            <h2 id="delete-flow-title">Apagar fluxo diário</h2>
+            <p>{selectedFlow?.name}</p>
+            <div className="alert error" role="alert">
+              Esta ação não pode ser desfeita. O fluxo e todos os pagamentos importados nele
+              serão apagados.
+            </div>
+            <div className="field">
+              <label htmlFor="flow-delete-reason">Motivo da exclusão</label>
+              <textarea
+                className="textarea"
+                id="flow-delete-reason"
+                value={flowDeleteReason}
+                onChange={(event) => setFlowDeleteReason(event.target.value)}
+                required
+                minLength={3}
+              />
+            </div>
+            <div className="button-row">
+              <button className="button danger" type="submit" disabled={flowBusy}>
+                {flowBusy ? "Apagando..." : "Confirmar exclusão"}
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => {
+                  setFlowDeleteOpen(false);
+                  setFlowDeleteReason("");
                 }}
                 disabled={flowBusy}
               >
