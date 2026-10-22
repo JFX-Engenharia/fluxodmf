@@ -61,7 +61,6 @@ export async function GET(request: Request) {
             orderBy: { createdAt: "asc" },
             include: { actor: { select: { id: true, name: true, role: true } } },
           },
-          appliedApprovalRule: true,
           actions: {
             orderBy: { createdAt: "desc" },
             include: { actor: { select: { id: true, name: true, role: true } } },

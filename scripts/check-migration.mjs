@@ -28,12 +28,11 @@ try {
   await test.connect();
   const result = await test.query(`
     SELECT
-      (SELECT COUNT(*)::int FROM "ApprovalRule") AS rules,
       (SELECT COUNT(*)::int FROM "Tag") AS tags,
       (SELECT COUNT(*)::int FROM "StandardReason") AS reasons
   `);
   await test.end();
-  if (result.rows[0].rules < 3 || result.rows[0].tags < 7 || result.rows[0].reasons < 8) {
+  if (result.rows[0].tags < 7 || result.rows[0].reasons < 8) {
     throw new Error("A migração não criou a configuração financeira inicial esperada.");
   }
   console.log("Migração financeira validada em PostgreSQL temporário.");

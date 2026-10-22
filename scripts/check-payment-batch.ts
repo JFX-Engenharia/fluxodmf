@@ -1,8 +1,8 @@
 /**
  * Regressao da acao em lote. O que se testa aqui nao e o ganho de tempo — e que
- * a pressa nao custou uma invariante: a alcada por valor, o bloqueio de
- * auto-aprovacao e a contagem de aprovacoes parciais sao a parte do sistema
- * onde um erro aprova pagamento indevido.
+ * a pressa nao custou uma invariante: o bloqueio de auto-aprovacao, a falha
+ * parcial com motivo e o historico por pagamento sao a parte do sistema onde um
+ * erro aprova pagamento indevido ou apaga o rastro de quem aprovou.
  *
  * Uso: npm run check:payment-batch
  */
@@ -18,7 +18,7 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: getDatabaseUrl() }),
 });
 const suffix = `check-batch-${Date.now()}`;
-const created = { userIds: [] as string[], workId: "", batchId: "", ruleIds: [] as string[] };
+const created = { userIds: [] as string[], workId: "", batchId: "" };
 
 async function user(name: string, role: Role) {
   const row = await prisma.user.create({
@@ -119,34 +119,37 @@ async function main() {
   assert.equal(naoAprovado.status, PaymentStatus.PENDENTE, "o status nao pode ter mudado");
   console.log("OK auto-aprovacao bloqueada, com motivo e sem alterar o pagamento.");
 
-  // ---- 3. lote heterogeneo: a alcada depende do VALOR de cada pagamento ----
-  const regra = await prisma.approvalRule.create({
-    data: {
-      name: `Alta alcada ${suffix}`,
-      minAmount: 10_000,
-      requiredRole: Role.ADMINISTRADOR,
-      requiredApprovals: 1,
-      priority: 100,
-      active: true,
-    },
-    select: { id: true },
-  });
-  created.ruleIds.push(regra.id);
-
-  // O aprovador atende a alcada padrao (APROVADOR) mas nao a da regra acima de
-  // 10 mil, que exige ADMINISTRADOR. Um GESTOR nao serviria para o teste: ele
-  // fica abaixo do padrao e reprovaria os dois, escondendo a distincao.
+  // ---- 3. sem alcada: o valor nao muda quem pode aprovar ----
+  // Um aprovador aprova o pagamento caro tao bem quanto o barato, com uma
+  // unica aprovacao. Antes havia regra por faixa de valor; ela nao existe mais.
   const barato = await payment("barato", 50, importer.id);
   const caro = await payment("caro", 50_000, importer.id);
   const terceiro = await runBatch(aprovador.id, [barato.id, caro.id]);
 
-  assert.equal(terceiro.job.successCount, 1, "o barato passa");
-  assert.equal(terceiro.job.failedCount, 1, "o caro exige administrador");
-  const recusado = terceiro.results.find((item) => !item.ok);
-  assert.ok(recusado?.error, "a recusa por alcada precisa de motivo");
-  const caroDepois = await prisma.payment.findUniqueOrThrow({ where: { id: caro.id } });
-  assert.equal(caroDepois.status, PaymentStatus.PENDENTE, "acima da alcada nao pode ser aprovado");
-  console.log("OK lote heterogeneo: aprova o que a alcada permite e recusa o resto.");
+  assert.equal(terceiro.job.successCount, 2, "barato e caro aprovados pelo mesmo aprovador");
+  assert.equal(terceiro.job.failedCount, 0);
+  const caroDepois = await prisma.payment.findUniqueOrThrow({
+    where: { id: caro.id },
+    include: { approvals: true },
+  });
+  assert.equal(caroDepois.status, PaymentStatus.APROVADO, "uma aprovacao basta, em qualquer valor");
+  assert.equal(caroDepois.approvals.length, 1, "fica registrado quem aprovou");
+  assert.equal(caroDepois.approvals[0]?.actorId, aprovador.id);
+  console.log("OK sem alcada: o aprovador aprova qualquer valor com uma aprovacao.");
+
+  // ---- 3b. gestor nao aprova: a permissao e por perfil, nao por valor ----
+  // A checagem do ator e feita uma vez, antes do laco: o job inteiro falha com
+  // o motivo, sem tocar em pagamento nenhum. (A rota do lote ja recusa o POST
+  // com 403; aqui se garante que o worker nao confia so na rota.)
+  const gestor = await user("gestor", Role.GESTOR);
+  const doGestor = await payment("gestor-tenta", 10, importer.id);
+  const quarto = await runBatch(gestor.id, [doGestor.id]);
+  assert.equal(quarto.job.status, ImportStatus.FALHOU, "gestor nao aprova");
+  assert.ok(quarto.job.error, "a recusa precisa dizer o motivo");
+  assert.equal(quarto.job.successCount, 0);
+  const doGestorDepois = await prisma.payment.findUniqueOrThrow({ where: { id: doGestor.id } });
+  assert.equal(doGestorDepois.status, PaymentStatus.PENDENTE);
+  console.log("OK gestor nao aprova pagamentos.");
 
   // ---- 4. reprocessar o mesmo job nao duplica nada ----
   const idsRepetidos = comuns.slice(0, 2).map((p) => p.id);
@@ -177,9 +180,6 @@ async function cleanup() {
     await prisma.auditLog.deleteMany({ where: { entityId: { in: ids } } });
     await prisma.paymentBatchAction.deleteMany({ where: { actorId: { in: created.userIds } } });
     await prisma.importBatch.deleteMany({ where: { id: created.batchId } });
-  }
-  if (created.ruleIds.length) {
-    await prisma.approvalRule.deleteMany({ where: { id: { in: created.ruleIds } } });
   }
   if (created.workId) await prisma.work.deleteMany({ where: { id: created.workId } });
   if (created.userIds.length) {

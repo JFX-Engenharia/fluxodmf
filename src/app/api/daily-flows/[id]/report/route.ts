@@ -28,7 +28,6 @@ export async function GET(
               include: {
                 work: true,
                 allocations: { include: { work: true } },
-                approvals: true,
               },
             },
           },

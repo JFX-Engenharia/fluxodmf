@@ -207,7 +207,6 @@ model Work {
   users             UserWork[]
   payments          Payment[]
   contributions     Contribution[]
-  approvalRules     ApprovalRule[]
   allocationSplits  AllocationRuleSplit[]
   paymentAllocations PaymentAllocation[]
   advances          Advance[]
@@ -302,9 +301,9 @@ model PaymentBatchAction {
   successCount     Int          @default(0)
   failedCount      Int          @default(0)
   /// Resultado POR ITEM em JSON: falha parcial e requisito, nao detalhe. Um
-  /// lote heterogeneo legitimamente aprova uns e recusa outros, porque a
-  /// alcada depende do valor de cada pagamento. Tambem e o que permite retomar
-  /// sem reaplicar o que ja foi feito.
+  /// lote legitimamente aprova uns e recusa outros (fluxo fechado, pagamento
+  /// criado pelo proprio aprovador). Tambem e o que permite retomar sem
+  /// reaplicar o que ja foi feito.
   results          String       @default("[]")
   attempts         Int          @default(0)
   error            String       @default("")
@@ -361,10 +360,6 @@ model Payment {
   allocations       PaymentAllocation[]
   hasReceipt        Boolean         @default(false)
   receiptReceivedAt DateTime?
-  appliedApprovalRuleId String?
-  appliedApprovalRule ApprovalRule? @relation(fields: [appliedApprovalRuleId], references: [id], onDelete: SetNull)
-  requiredApprovals  Int             @default(1)
-  requiredApprovalRole Role          @default(GESTOR)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -373,39 +368,14 @@ model Payment {
   @@index([currentDueDate])
 }
 
-model ApprovalRule {
-  id                  String    @id @default(cuid())
-  name                String
-  minAmount           Decimal   @default(0)
-  maxAmount           Decimal?
-  workId              String?
-  work                Work?     @relation(fields: [workId], references: [id], onDelete: SetNull)
-  category            String?
-  tagId               String?
-  tag                 Tag?      @relation(fields: [tagId], references: [id], onDelete: SetNull)
-  requiredRole        Role      @default(GESTOR)
-  requiredApprovals   Int       @default(1)
-  preventSelfApproval Boolean   @default(true)
-  priority            Int       @default(0)
-  active              Boolean   @default(true)
-  payments            Payment[]
-  approvals           PaymentApproval[]
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  @@index([active, priority])
-  @@index([workId])
-  @@index([tagId])
-}
-
+/// Quem aprovou o pagamento. Sem alcada, uma aprovacao basta: a linha existe
+/// enquanto o pagamento esta APROVADO e e apagada por qualquer outra acao.
 model PaymentApproval {
   id             String       @id @default(cuid())
   paymentId      String
   payment        Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   actorId        String
   actor          User         @relation(fields: [actorId], references: [id])
-  approvalRuleId String?
-  approvalRule   ApprovalRule? @relation(fields: [approvalRuleId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
 
   @@unique([paymentId, actorId])
@@ -418,7 +388,6 @@ model Tag {
   color     String         @default("#3157A4")
   active    Boolean        @default(true)
   payments  PaymentTag[]
-  rules     ApprovalRule[]
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 }

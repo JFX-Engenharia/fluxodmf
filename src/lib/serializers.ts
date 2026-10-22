@@ -21,10 +21,6 @@ type PaymentRecord = Record<string, unknown> & {
     percentage: DecimalLike | number | string;
     amount: DecimalLike | number | string;
   }>;
-  appliedApprovalRule?: (Record<string, unknown> & {
-    minAmount: DecimalLike | number | string;
-    maxAmount?: DecimalLike | number | string | null;
-  }) | null;
 };
 
 function decimalToNumber(value: DecimalLike | number | string) {
@@ -57,17 +53,6 @@ export function serializePayment(payment: PaymentRecord) {
       percentage: decimalToNumber(allocation.percentage),
       amount: decimalToNumber(allocation.amount),
     })),
-    appliedApprovalRule: payment.appliedApprovalRule
-      ? {
-          ...payment.appliedApprovalRule,
-          minAmount: decimalToNumber(payment.appliedApprovalRule.minAmount),
-          maxAmount:
-            payment.appliedApprovalRule.maxAmount === null ||
-            payment.appliedApprovalRule.maxAmount === undefined
-              ? null
-              : decimalToNumber(payment.appliedApprovalRule.maxAmount),
-        }
-      : null,
   };
 }
 

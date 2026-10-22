@@ -3,11 +3,15 @@
  * compartilhado pela rota individual e pelo processamento em lote.
  *
  * Existe por um motivo so: as invariantes desta operacao — lock pessimista,
- * bloqueio de auto-aprovacao, alcada por valor, contagem de aprovacoes
- * parciais, regra sticky — sao a parte do sistema onde um erro aprova pagamento
- * indevido. Mante-las em dois lugares seria garantir que um dia divergem. A
- * rota carrega UM pagamento e chama isto; o worker carrega N e chama isto N
- * vezes, dentro da propria transacao de cada bloco.
+ * bloqueio de auto-aprovacao, perfil que pode aprovar — sao a parte do sistema
+ * onde um erro aprova pagamento indevido. Mante-las em dois lugares seria
+ * garantir que um dia divergem. A rota carrega UM pagamento e chama isto; o
+ * worker carrega N e chama isto N vezes, dentro da propria transacao de cada
+ * bloco.
+ *
+ * Nao ha alcada: qualquer aprovador (ou administrador) aprova qualquer
+ * pagamento, de qualquer valor, com uma unica aprovacao. A unica restricao que
+ * depende do pagamento e a de que quem o criou ou importou nao o aprova.
  *
  * O que este modulo NAO faz, de proposito: autenticar (o lote autentica uma vez
  * so), abrir transacao (quem chama decide o escopo) e gravar auditoria (o lote
@@ -18,8 +22,8 @@
 import type { Prisma } from "@prisma-generated/client";
 import { ActionType, DailyFlowStatus, PaymentStatus, Role } from "@prisma-generated/enums";
 import { ApiError } from "@/lib/api";
-import { chooseApprovalRule, reasonActionByPaymentAction, roleAtLeast } from "@/lib/finance-management";
-import { canAdminister, canEditPayments } from "@/lib/permissions";
+import { reasonActionByPaymentAction } from "@/lib/finance-management";
+import { canAdminister, canApprovePayments, canEditPayments } from "@/lib/permissions";
 
 export const PAYMENT_ACTIONS = [
   "approve",
@@ -64,11 +68,7 @@ export type PaymentForAction = {
   status: PaymentStatus;
   supplierName: string;
   createdById: string;
-  appliedApprovalRuleId: string | null;
-  requiredApprovals: number;
-  requiredApprovalRole: Role;
   work: { name: string };
-  approvals: Array<{ actorId: string }>;
   importBatch: { dailyFlow: { status: DailyFlowStatus } | null };
 };
 
@@ -79,23 +79,8 @@ export type PaymentActionOutcome = {
   actionType: ActionType;
   newDueDate: Date | null;
   effectiveReason?: string;
-  approval: { count: number; required: number; completed: boolean } | null;
   /** Metadados da auditoria, identicos nas duas pontas. */
   auditMetadata: Record<string, unknown>;
-};
-
-/** Regras de aprovacao ja carregadas, avaliadas em memoria por chooseApprovalRule. */
-export type ApprovalRuleRecord = {
-  id: string;
-  minAmount: Prisma.Decimal | number | string;
-  maxAmount: Prisma.Decimal | number | string | null;
-  workId: string | null;
-  category: string | null;
-  tagId: string | null;
-  priority: number;
-  requiredApprovals: number;
-  requiredRole: Role;
-  preventSelfApproval: boolean;
 };
 
 function requireReason(reason: string | undefined, message: string) {
@@ -118,6 +103,9 @@ export function assertActorCanAct(actor: PaymentActionActor, action: PaymentActi
   }
   if (CRITICAL_ACTIONS.includes(action) && !canAdminister(actor.role)) {
     throw new ApiError(403, "Somente o administrador pode cancelar ou reabrir pagamentos.");
+  }
+  if (action === "approve" && !canApprovePayments(actor.role)) {
+    throw new ApiError(403, "Somente aprovadores e administradores aprovam pagamentos.");
   }
 }
 
@@ -162,19 +150,6 @@ export function assertPaymentAcceptsAction(
 
 /**
  * Executa a acao DENTRO da transacao recebida e devolve o que aconteceu.
- *
- * `approvalRules` avaliadas em memoria por chooseApprovalRule: no lote, ler as
- * regras uma vez para todos os pagamentos e boa parte do ganho. A regra sticky
- * continua vencendo quando existe — a lista so pesa quando o pagamento ainda
- * nao tem regra aplicada.
- *
- * `null` significa "nao pre-carreguei": a lista e lida AQUI DENTRO, ja sob o
- * lock. E o que a rota individual passa, e nao e detalhe — entre ler as regras
- * fora e pegar o lock, outra acao pode ter limpado a regra aplicada do
- * pagamento, e uma lista vazia carregada antes faria a aprovacao cair no padrao
- * (1 aprovacao, perfil APROVADOR), afrouxando a alcada exatamente no caso em
- * que ela deveria valer. O lote passa a lista porque a le uma vez, dentro do
- * mesmo ciclo de vida do job.
  */
 export async function applyPaymentAction(params: {
   tx: Prisma.TransactionClient;
@@ -182,17 +157,12 @@ export async function applyPaymentAction(params: {
   actor: PaymentActionActor;
   input: PaymentActionInput;
   effectiveReason?: string;
-  approvalRules: ApprovalRuleRecord[] | null;
 }): Promise<PaymentActionOutcome> {
-  const { tx, payment, actor, input, effectiveReason, approvalRules } = params;
+  const { tx, payment, actor, input, effectiveReason } = params;
 
   let newStatus: PaymentStatus = payment.status;
   let actionType: ActionType = ActionType.APROVAR;
   let newDueDate: Date | null = null;
-  let approvalRuleId: string | null = payment.appliedApprovalRuleId;
-  let requiredApprovals = payment.requiredApprovals;
-  let requiredApprovalRole = payment.requiredApprovalRole;
-  let approvalCount = payment.approvals.length;
   let previousStatus = payment.status;
 
   if (input.action === "approve") {
@@ -233,12 +203,12 @@ export async function applyPaymentAction(params: {
 
   if (input.action === "approve") {
     // Serializa aprovações do mesmo pagamento. Sem o lock, dois aprovadores
-    // simultâneos poderiam contar apenas a própria linha e deixar uma dupla
-    // aprovação indevidamente pendente mesmo após os dois registros.
+    // simultâneos passariam ambos pela checagem de status e gravariam duas
+    // aprovações e dois registros de histórico para um único pagamento.
     await tx.$queryRaw`SELECT "id" FROM "Payment" WHERE "id" = ${payment.id} FOR UPDATE`;
     const lockedPayment = await tx.payment.findUnique({
       where: { id: payment.id },
-      include: { tags: true, approvals: true, appliedApprovalRule: true },
+      select: { status: true, createdById: true },
     });
     if (!lockedPayment) throw new ApiError(404, "Pagamento não encontrado.");
     if (lockedPayment.status === PaymentStatus.APROVADO) {
@@ -247,43 +217,14 @@ export async function applyPaymentAction(params: {
     if (lockedPayment.status === PaymentStatus.CANCELADO) {
       throw new ApiError(409, "Pagamento cancelado precisa voltar para em aberto.");
     }
-
-    let candidateRules: ApprovalRuleRecord[] = [];
-    if (!lockedPayment.appliedApprovalRule) {
-      candidateRules =
-        approvalRules ??
-        (await tx.approvalRule.findMany({
-          where: { active: true },
-          orderBy: { priority: "desc" },
-        }));
-    }
-    const rule = lockedPayment.appliedApprovalRule ?? chooseApprovalRule(lockedPayment, candidateRules);
-    approvalRuleId = rule?.id ?? null;
-    requiredApprovals = rule?.requiredApprovals ?? 1;
-    requiredApprovalRole = rule?.requiredRole ?? Role.APROVADOR;
-    const preventSelfApproval = rule?.preventSelfApproval ?? true;
-
-    if (preventSelfApproval && lockedPayment.createdById === actor.id) {
+    if (lockedPayment.createdById === actor.id) {
       throw new ApiError(403, "Quem criou ou importou o pagamento não pode aprová-lo.");
-    }
-    if (!roleAtLeast(actor.role, requiredApprovalRole)) {
-      throw new ApiError(
-        403,
-        requiredApprovalRole === Role.ADMINISTRADOR
-          ? "Este pagamento exige aprovação de administrador."
-          : "Seu perfil não atende à alçada deste pagamento.",
-      );
-    }
-    if (lockedPayment.approvals.some((approval) => approval.actorId === actor.id)) {
-      throw new ApiError(409, "Você já registrou sua aprovação neste pagamento.");
     }
 
     await tx.paymentApproval.create({
-      data: { paymentId: payment.id, actorId: actor.id, approvalRuleId },
+      data: { paymentId: payment.id, actorId: actor.id },
     });
-    approvalCount = await tx.paymentApproval.count({ where: { paymentId: payment.id } });
-    newStatus =
-      approvalCount >= requiredApprovals ? PaymentStatus.APROVADO : PaymentStatus.PENDENTE;
+    newStatus = PaymentStatus.APROVADO;
     previousStatus = lockedPayment.status;
   } else {
     await tx.paymentApproval.deleteMany({ where: { paymentId: payment.id } });
@@ -297,10 +238,7 @@ export async function applyPaymentAction(params: {
       previousStatus,
       newStatus,
       reason: effectiveReason,
-      note:
-        input.action === "approve" && newStatus !== PaymentStatus.APROVADO
-          ? `Aprovação ${approvalCount} de ${requiredApprovals}`
-          : input.note,
+      note: input.note,
       newDueDate,
     },
   });
@@ -310,9 +248,6 @@ export async function applyPaymentAction(params: {
     data: {
       status: newStatus,
       currentDueDate: newDueDate ?? undefined,
-      appliedApprovalRuleId: input.action === "approve" ? approvalRuleId : null,
-      requiredApprovals: input.action === "approve" ? requiredApprovals : 1,
-      requiredApprovalRole: input.action === "approve" ? requiredApprovalRole : Role.APROVADOR,
     },
     // Select minimo: quem precisa do pagamento inteiro (a rota individual) o
     // recarrega com os includes da tela. O lote descartaria esse trabalho.
@@ -326,14 +261,6 @@ export async function applyPaymentAction(params: {
     actionType,
     newDueDate,
     effectiveReason,
-    approval:
-      input.action === "approve"
-        ? {
-            count: approvalCount,
-            required: requiredApprovals,
-            completed: newStatus === PaymentStatus.APROVADO,
-          }
-        : null,
     auditMetadata: {
       acao: input.action,
       fornecedor: payment.supplierName,
@@ -341,8 +268,6 @@ export async function applyPaymentAction(params: {
       de: previousStatus,
       para: newStatus,
       motivo: effectiveReason,
-      aprovacoes:
-        input.action === "approve" ? `${approvalCount}/${requiredApprovals}` : undefined,
       ...(newDueDate ? { novaData: newDueDate.toISOString().slice(0, 10) } : {}),
     },
   };
