@@ -19,7 +19,6 @@ import {
   assertActorCanAct,
   assertPaymentAcceptsAction,
   resolveEffectiveReason,
-  type ApprovalRuleRecord,
   type PaymentActionInput,
   type PaymentActionName,
 } from "@/lib/payment-actions";
@@ -125,16 +124,12 @@ export async function processPaymentBatch(jobId: string): Promise<void> {
       newDueDate: job.newDueDate ? job.newDueDate.toISOString().slice(0, 10) : undefined,
     };
 
-    // Tudo o que nao varia por pagamento sai do laco: motivo padronizado e
-    // regras de aprovacao, lidos UMA vez para o lote inteiro.
+    // O que nao varia por pagamento sai do laco: o motivo padronizado e
+    // resolvido UMA vez para o lote inteiro.
     const standardReason = job.standardReasonId
       ? await prisma.standardReason.findUnique({ where: { id: job.standardReasonId } })
       : null;
     const effectiveReason = resolveEffectiveReason(input, standardReason);
-    const approvalRules: ApprovalRuleRecord[] = await prisma.approvalRule.findMany({
-      where: { active: true },
-      orderBy: { priority: "desc" },
-    });
 
     // Retomada: o que ja tem resultado gravado nao e reaplicado. Sem isso, um
     // retry criaria PaymentAction duplicado nas acoes que nao sao protegidas
@@ -158,11 +153,7 @@ export async function processPaymentBatch(jobId: string): Promise<void> {
           status: true,
           supplierName: true,
           createdById: true,
-          appliedApprovalRuleId: true,
-          requiredApprovals: true,
-          requiredApprovalRole: true,
           work: { select: { name: true } },
-          approvals: { select: { actorId: true } },
           importBatch: { select: { dailyFlow: { select: { status: true } } } },
         },
       });
@@ -189,7 +180,6 @@ export async function processPaymentBatch(jobId: string): Promise<void> {
                 actor,
                 input,
                 effectiveReason,
-                approvalRules,
               }),
             );
             result = {
@@ -206,8 +196,8 @@ export async function processPaymentBatch(jobId: string): Promise<void> {
               metadata: outcome.auditMetadata,
             });
           } catch (error) {
-            // Falha parcial e requisito: um lote heterogeneo aprova o que a
-            // alcada permite e recusa o resto, com o motivo de cada recusa. A
+            // Falha parcial e requisito: um lote aprova o que pode e recusa o
+            // resto (fluxo fechado, autoaprovacao), com o motivo de cada recusa. A
             // falha desfaz apenas a transacao DESTE pagamento; os demais nao
             // sao afetados.
             result = {

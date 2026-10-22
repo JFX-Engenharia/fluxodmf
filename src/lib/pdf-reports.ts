@@ -229,8 +229,6 @@ type FlowReportPayment = {
   currentDueDate: Date;
   status: string;
   work: { name: string };
-  requiredApprovals: number;
-  approvals: Array<{ id: string }>;
   allocations: Array<{ percentage: number | string | { toString(): string }; work: { name: string } }>;
 };
 
@@ -354,17 +352,16 @@ export async function buildDailyFlowReportPdf(flow: FlowReport) {
 
   section("Pagamentos do fluxo");
   const paymentColumns: TableColumn<FlowReportPayment>[] = [
-    { label: "Fornecedor", width: 120, value: (row) => row.supplierName },
+    { label: "Fornecedor", width: 155, value: (row) => row.supplierName },
     {
       label: "Conta / rateio",
-      width: 120,
+      width: 150,
       value: (row) => row.allocations.length
         ? row.allocations.map((item) => `${item.work.name} ${Number(item.percentage.toString())}%`).join(" / ")
         : row.work.name,
     },
     { label: "Vencimento", width: 65, value: (row) => brDate(row.currentDueDate) },
     { label: "Status", width: 75, value: (row) => row.status.replaceAll("_", " ") },
-    { label: "Alçada", width: 65, value: (row) => `${row.approvals.length}/${row.requiredApprovals}` },
     { label: "Valor", width: 78, align: "right", value: (row) => brl(numberFromDecimal(row.amount)) },
   ];
   const paymentHeader = () => {

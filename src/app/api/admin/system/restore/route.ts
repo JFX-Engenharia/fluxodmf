@@ -23,7 +23,6 @@ const nullableDate = date.nullable();
 const work = z.object({ id: z.string(), name: z.string(), slug: z.string(), costCenterAliases: z.string(), active: z.boolean(), createdAt: date, updatedAt: date });
 const workApprover = z.object({ workId: z.string(), userId: z.string() });
 const userWork = z.object({ userId: z.string(), workId: z.string() });
-const approvalRuleLink = z.object({ id: z.string(), workId: z.string().nullable() }).passthrough();
 const allocationRuleSplit = z.object({ id: z.string(), ruleId: z.string(), workId: z.string(), percentage: decimal });
 const importBatch = z.object({
   id: z.string(),
@@ -50,11 +49,14 @@ const payment = z.object({
   id: z.string(), externalReference: z.string().nullable(), supplierName: z.string(), description: z.string(), amount: decimal,
   originalDueDate: date, currentDueDate: date, costCenter: z.string(), category: z.string(), uniqueKey: z.string(), status: z.nativeEnum(PaymentStatus),
   workId: z.string(), importBatchId: z.string(), createdById: z.string(), hasReceipt: z.boolean(), receiptReceivedAt: nullableDate,
-  appliedApprovalRuleId: z.string().nullable(), requiredApprovals: z.number(), requiredApprovalRole: z.nativeEnum(Role), createdAt: date, updatedAt: date,
+  createdAt: date, updatedAt: date,
 });
 const paymentAction = z.object({ id: z.string(), paymentId: z.string(), actorId: z.string(), type: z.nativeEnum(ActionType), previousStatus: z.nativeEnum(PaymentStatus).nullable(), newStatus: z.nativeEnum(PaymentStatus), reason: z.string().nullable(), newDueDate: nullableDate, note: z.string().nullable(), createdAt: date });
 const attachment = z.object({ id: z.string(), paymentId: z.string(), fileName: z.string(), url: z.string(), uploadedBy: z.string(), createdAt: date });
-const paymentApproval = z.object({ id: z.string(), paymentId: z.string(), actorId: z.string(), approvalRuleId: z.string().nullable(), createdAt: date });
+// Backups anteriores a remocao da alcada trazem approvalRuleId no PaymentApproval,
+// os campos de alcada no Payment e a lista approvalRules: o zod descarta as chaves
+// que nao estao declaradas, entao eles restauram sem ajuste.
+const paymentApproval = z.object({ id: z.string(), paymentId: z.string(), actorId: z.string(), createdAt: date });
 const paymentTag = z.object({ paymentId: z.string(), tagId: z.string() });
 const paymentAllocation = z.object({ id: z.string(), paymentId: z.string(), workId: z.string(), percentage: decimal, amount: decimal, source: z.nativeEnum(AllocationSource), createdAt: date, updatedAt: date });
 const advance = z.object({ id: z.string(), collaboratorName: z.string(), description: z.string(), amount: decimal, spentAmount: decimal, returnedAmount: decimal, grantedAt: date, dueDate: date, settledAt: nullableDate, status: z.nativeEnum(AdvanceStatus), notes: z.string().nullable(), documents: z.string(), workId: z.string().nullable(), createdById: z.string(), createdAt: date, updatedAt: date });
@@ -67,7 +69,7 @@ const dailyFlowEvent = z.object({ id: z.string(), dailyFlowId: z.string(), actor
 const backupSchema = z.object({
   format: z.literal("fluxo-backup/v1"),
   data: z.object({
-    works: z.array(work), workApprovers: z.array(workApprover), userWorks: z.array(userWork), approvalRules: z.array(approvalRuleLink), allocationRuleSplits: z.array(allocationRuleSplit),
+    works: z.array(work), workApprovers: z.array(workApprover), userWorks: z.array(userWork), allocationRuleSplits: z.array(allocationRuleSplit),
     importBatches: z.array(importBatch), contributions: z.array(contribution), payments: z.array(payment), paymentActions: z.array(paymentAction),
     attachments: z.array(attachment), paymentApprovals: z.array(paymentApproval), paymentTags: z.array(paymentTag),
     paymentAllocations: z.array(paymentAllocation), advances: z.array(advance), paymentRequests: z.array(paymentRequest),
@@ -108,11 +110,6 @@ export async function POST(request: Request) {
 
           await tx.work.createMany({ data: backup.data.works });
           await tx.workApprover.createMany({ data: backup.data.workApprovers });
-          await Promise.all(
-            backup.data.approvalRules.map((rule) =>
-              tx.approvalRule.updateMany({ where: { id: rule.id }, data: { workId: rule.workId } }),
-            ),
-          );
           await tx.allocationRuleSplit.createMany({ data: backup.data.allocationRuleSplits });
           await tx.userWork.createMany({ data: backup.data.userWorks });
           await tx.importBatch.createMany({

@@ -2250,7 +2250,7 @@ button,
   }
 }
 
-/* Gestão financeira: indicadores, calendário, alçadas e rateios. */
+/* Gestão financeira: indicadores, calendário e rateios. */
 .form-grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

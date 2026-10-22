@@ -1,4 +1,4 @@
-import { AllocationSource, PaymentStatus, Role } from "@prisma-generated/enums";
+import { AllocationSource, PaymentStatus } from "@prisma-generated/enums";
 import { z } from "zod";
 import { auditLog } from "@/lib/audit";
 import { ApiError, handleApiError, ok } from "@/lib/api";
@@ -58,10 +58,6 @@ export async function POST(
           })),
         });
       }
-      if (structuralChange && payment.status !== PaymentStatus.APROVADO) {
-        await tx.paymentApproval.deleteMany({ where: { paymentId: id } });
-      }
-
       return tx.payment.update({
         where: { id },
         data: {
@@ -72,13 +68,6 @@ export async function POST(
               : body.receiptReceivedAt
                 ? new Date(body.receiptReceivedAt)
                 : null,
-          ...(structuralChange && payment.status !== PaymentStatus.APROVADO
-            ? {
-                appliedApprovalRuleId: null,
-                requiredApprovals: 1,
-                requiredApprovalRole: Role.APROVADOR,
-              }
-            : {}),
         },
         include: {
           work: true,
@@ -89,7 +78,6 @@ export async function POST(
             orderBy: { createdAt: "asc" },
             include: { actor: { select: { id: true, name: true, role: true } } },
           },
-          appliedApprovalRule: true,
           actions: {
             orderBy: { createdAt: "desc" },
             include: { actor: { select: { id: true, name: true, role: true } } },

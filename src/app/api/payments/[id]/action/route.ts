@@ -47,9 +47,6 @@ export async function POST(
           where: { id },
           include: {
             work: true,
-            tags: true,
-            approvals: true,
-            appliedApprovalRule: true,
             importBatch: { include: { dailyFlow: true } },
           },
         });
@@ -68,9 +65,6 @@ export async function POST(
             actor: user,
             input: body,
             effectiveReason,
-            // Uma acao so: as regras sao lidas dentro da transacao, ja sob o
-            // lock, exatamente como antes desta extracao.
-            approvalRules: null,
           });
 
           // O nucleo grava com select minimo; a tela precisa do pagamento
@@ -86,7 +80,6 @@ export async function POST(
                 orderBy: { createdAt: "asc" },
                 include: { actor: { select: { id: true, name: true, role: true } } },
               },
-              appliedApprovalRule: true,
               actions: {
                 orderBy: { createdAt: "desc" },
                 include: { actor: { select: { id: true, name: true, role: true } } },
@@ -105,10 +98,7 @@ export async function POST(
           metadata: outcome.auditMetadata,
         });
 
-        return ok({
-          payment: serializePayment(updated),
-          approval: outcome.approval,
-        });
+        return ok({ payment: serializePayment(updated) });
       },
     });
   } catch (error) {

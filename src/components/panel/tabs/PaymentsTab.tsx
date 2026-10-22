@@ -40,12 +40,9 @@ type Payment = {
   work: { id: string; name: string };
   hasReceipt: boolean;
   receiptReceivedAt?: string | null;
-  requiredApprovals: number;
-  requiredApprovalRole: "GESTOR" | "APROVADOR" | "ADMINISTRADOR";
   approvals?: Array<{ id: string; createdAt: string; actor: { id: string; name: string; role: string } }>;
   tags?: Array<{ tagId: string; tag: { id: string; name: string; color: string } }>;
   allocations?: Array<{ workId: string; percentage: number; amount: number; work: { id: string; name: string } }>;
-  appliedApprovalRule?: { id: string; name: string } | null;
   actions?: {
     id: string;
     type: string;
@@ -374,11 +371,7 @@ export function PaymentsTab() {
       setReason("");
       setStandardReasonId("");
       setNewDueDate("");
-      setMessage(
-        result.approval && !result.approval.completed
-          ? `Aprovação ${result.approval.count} de ${result.approval.required} registrada. Ainda falta aprovação.`
-          : "Ação registrada.",
-      );
+      setMessage("Ação registrada.");
       reload();
       reloadFlows();
     } catch {
@@ -720,9 +713,10 @@ export function PaymentsTab() {
       {error ? <div className="alert error" role="alert">{error}</div> : null}
       {message ? <div className="alert success" role="status">{message}</div> : null}
 
-      {/* Lote heterogeneo recusa uns e aprova outros por regra de alcada, entao
-          o motivo de cada recusa precisa aparecer inteiro — resumir em "3 de 40
-          falharam" obriga o conferente a descobrir na mao quais foram. */}
+      {/* Um lote pode recusar uns e aprovar outros (fluxo fechado, pagamento
+          criado pelo proprio aprovador), entao o motivo de cada recusa precisa
+          aparecer inteiro — resumir em "3 de 40 falharam" obriga o conferente
+          a descobrir na mao quais foram. */}
       {batchFailures.length > 0 ? (
         <div className="panel pad">
           <div className="section-header">
@@ -878,15 +872,15 @@ export function PaymentsTab() {
                     <span>Status</span>
                     <StatusBadge status={selected.status} />
                   </div>
-                  <div className="detail-item">
-                    <span>Alçada</span>
-                    <strong>
-                      {selected.approvals?.length ?? 0} / {selected.requiredApprovals} aprovação(ões)
-                    </strong>
-                    <small className="muted">
-                      {selected.appliedApprovalRule?.name ?? `Perfil mínimo: ${selected.requiredApprovalRole}`}
-                    </small>
-                  </div>
+                  {selected.approvals?.length ? (
+                    <div className="detail-item">
+                      <span>Aprovado por</span>
+                      <strong>{selected.approvals.map((approval) => approval.actor.name).join(", ")}</strong>
+                      {selected.approvals[0] ? (
+                        <small className="muted">{shortDate(selected.approvals[0].createdAt)}</small>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="detail-item">
                     <span>Nota / comprovante</span>
                     <strong>{selected.hasReceipt ? "Recebido" : "Pendente"}</strong>

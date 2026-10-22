@@ -1,27 +1,14 @@
 import assert from "node:assert/strict";
 import { Role } from "../generated/prisma/enums";
-import {
-  allocationRows,
-  chooseAllocationRule,
-  chooseApprovalRule,
-  roleAtLeast,
-} from "../src/lib/finance-management";
+import { allocationRows, chooseAllocationRule } from "../src/lib/finance-management";
+import { canApprovePayments } from "../src/lib/permissions";
 
-const payment = {
-  amount: 7500,
-  workId: "obra-a",
-  category: "Materiais",
-  tags: [{ tagId: "extra" }],
-};
-const rule = chooseApprovalRule(payment, [
-  { id: "value", minAmount: 5000.01, maxAmount: null, workId: null, category: null, tagId: null, requiredRole: Role.APROVADOR, requiredApprovals: 1, preventSelfApproval: true, priority: 20 },
-  { id: "extra", minAmount: 0, maxAmount: null, workId: null, category: null, tagId: "extra", requiredRole: Role.APROVADOR, requiredApprovals: 2, preventSelfApproval: true, priority: 100 },
-]);
-assert.equal(rule?.id, "extra", "a tag extraordinária deve prevalecer pela prioridade");
-assert.equal(rule?.requiredApprovals, 2);
-assert.equal(roleAtLeast(Role.APROVADOR, Role.GESTOR), true);
-assert.equal(roleAtLeast(Role.GESTOR, Role.APROVADOR), false);
-assert.equal(roleAtLeast(Role.ADMINISTRADOR, Role.APROVADOR), true);
+// Sem alcada: a permissao de aprovar e por perfil, nao por valor.
+assert.equal(canApprovePayments(Role.APROVADOR), true);
+assert.equal(canApprovePayments(Role.ADMINISTRADOR), true);
+assert.equal(canApprovePayments(Role.GESTOR), false);
+assert.equal(canApprovePayments(Role.OPERADOR), false);
+assert.equal(canApprovePayments(Role.COLABORADOR), false);
 
 const allocationRule = chooseAllocationRule(
   { category: "Administrativo", supplierName: "Escritório Central" },

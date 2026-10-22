@@ -6,23 +6,6 @@ import { requireRole } from "@/lib/auth";
 import { allocationRows, numberValue } from "@/lib/finance-management";
 import { prisma } from "@/lib/db";
 
-const approvalRuleSchema = z.object({
-  resource: z.literal("approval_rule"),
-  action: z.literal("save"),
-  id: z.string().optional(),
-  name: z.string().trim().min(2).max(100),
-  minAmount: z.number().nonnegative(),
-  maxAmount: z.number().positive().nullable().optional(),
-  workId: z.string().nullable().optional(),
-  category: z.string().trim().max(80).nullable().optional(),
-  tagId: z.string().nullable().optional(),
-  requiredRole: z.nativeEnum(Role),
-  requiredApprovals: z.number().int().min(1).max(5),
-  preventSelfApproval: z.boolean().default(true),
-  priority: z.number().int().min(0).max(999).default(0),
-  active: z.boolean().default(true),
-});
-
 const tagSchema = z.object({
   resource: z.literal("tag"),
   action: z.literal("save"),
@@ -57,13 +40,12 @@ const allocationRuleSchema = z.object({
 });
 
 const deleteSchema = z.object({
-  resource: z.enum(["approval_rule", "tag", "reason", "allocation_rule"]),
+  resource: z.enum(["tag", "reason", "allocation_rule"]),
   action: z.literal("delete"),
   id: z.string().min(1),
 });
 
 const bodySchema = z.discriminatedUnion("resource", [
-  approvalRuleSchema,
   tagSchema,
   reasonSchema,
   allocationRuleSchema,
@@ -76,12 +58,8 @@ function clean(value: string | null | undefined) {
 export async function GET() {
   try {
     await requireRole([Role.ADMINISTRADOR]);
-    const [works, approvalRules, tags, reasons, allocationRules] = await Promise.all([
+    const [works, tags, reasons, allocationRules] = await Promise.all([
       prisma.work.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
-      prisma.approvalRule.findMany({
-        orderBy: [{ priority: "desc" }, { minAmount: "asc" }],
-        include: { work: true, tag: true },
-      }),
       prisma.tag.findMany({ orderBy: { name: "asc" } }),
       prisma.standardReason.findMany({ orderBy: [{ action: "asc" }, { sortOrder: "asc" }] }),
       prisma.allocationRule.findMany({
@@ -94,11 +72,6 @@ export async function GET() {
       works,
       tags,
       reasons,
-      approvalRules: approvalRules.map((rule) => ({
-        ...rule,
-        minAmount: numberValue(rule.minAmount),
-        maxAmount: rule.maxAmount === null ? null : numberValue(rule.maxAmount),
-      })),
       allocationRules: allocationRules.map((rule) => ({
         ...rule,
         splits: rule.splits.map((split) => ({
@@ -118,13 +91,7 @@ export async function POST(request: Request) {
     const body = bodySchema.parse(await request.json());
 
     if (body.action === "delete") {
-      if (body.resource === "approval_rule") {
-        await prisma.approvalRule.update({ where: { id: body.id }, data: { active: false } });
-      } else if (body.resource === "tag") {
-        const rulesUsingTag = await prisma.approvalRule.count({ where: { tagId: body.id } });
-        if (rulesUsingTag) {
-          throw new ApiError(409, "Remova a tag das regras de alçada antes de excluí-la.");
-        }
+      if (body.resource === "tag") {
         await prisma.tag.delete({ where: { id: body.id } });
       } else if (body.resource === "reason") {
         await prisma.standardReason.delete({ where: { id: body.id } });
@@ -141,28 +108,7 @@ export async function POST(request: Request) {
     }
 
     let entityId = body.id;
-    if (body.resource === "approval_rule") {
-      if (body.maxAmount !== null && body.maxAmount !== undefined && body.maxAmount < body.minAmount) {
-        throw new ApiError(400, "O valor máximo não pode ser menor que o mínimo.");
-      }
-      const data = {
-        name: body.name,
-        minAmount: body.minAmount,
-        maxAmount: body.maxAmount ?? null,
-        workId: body.workId ?? null,
-        category: clean(body.category),
-        tagId: body.tagId ?? null,
-        requiredRole: body.requiredRole,
-        requiredApprovals: body.requiredApprovals,
-        preventSelfApproval: body.preventSelfApproval,
-        priority: body.priority,
-        active: body.active,
-      };
-      const saved = body.id
-        ? await prisma.approvalRule.update({ where: { id: body.id }, data })
-        : await prisma.approvalRule.create({ data });
-      entityId = saved.id;
-    } else if (body.resource === "tag") {
+    if (body.resource === "tag") {
       const data = { name: body.name, color: body.color, active: body.active };
       const saved = body.id
         ? await prisma.tag.update({ where: { id: body.id }, data })

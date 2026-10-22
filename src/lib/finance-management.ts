@@ -1,4 +1,4 @@
-import { Role, StandardReasonAction } from "@prisma-generated/enums";
+import { StandardReasonAction } from "@prisma-generated/enums";
 
 type NumberLike = number | string | { toNumber?: () => number; toString?: () => string };
 
@@ -8,67 +8,6 @@ export function numberValue(value: NumberLike | null | undefined) {
   if (typeof value === "string") return Number(value);
   if (typeof value.toNumber === "function") return value.toNumber();
   return Number(value.toString?.() ?? 0);
-}
-
-const roleRank: Record<Role, number> = {
-  // Abaixo de zero: o colaborador de campo nao participa de alcada nenhuma,
-  // entao nunca satisfaz uma regra de aprovacao, nem a de menor exigencia.
-  [Role.COLABORADOR]: -1,
-  [Role.OPERADOR]: 0,
-  [Role.GESTOR]: 1,
-  [Role.APROVADOR]: 2,
-  [Role.ADMINISTRADOR]: 3,
-};
-
-export function roleAtLeast(actual: Role, required: Role) {
-  return roleRank[actual] >= roleRank[required];
-}
-
-type ApprovalRuleCandidate = {
-  id: string;
-  minAmount: NumberLike;
-  maxAmount: NumberLike | null;
-  workId: string | null;
-  category: string | null;
-  tagId: string | null;
-  requiredRole: Role;
-  requiredApprovals: number;
-  preventSelfApproval: boolean;
-  priority: number;
-};
-
-type PaymentForPolicy = {
-  amount: NumberLike;
-  workId: string;
-  category: string;
-  tags?: Array<{ tagId: string }>;
-};
-
-export function chooseApprovalRule(
-  payment: PaymentForPolicy,
-  rules: ApprovalRuleCandidate[],
-) {
-  const amount = numberValue(payment.amount);
-  const category = payment.category.trim().toLocaleLowerCase("pt-BR");
-  const tagIds = new Set(payment.tags?.map((item) => item.tagId) ?? []);
-
-  return rules
-    .filter((rule) => {
-      if (amount < numberValue(rule.minAmount)) return false;
-      if (rule.maxAmount !== null && amount > numberValue(rule.maxAmount)) return false;
-      if (rule.workId && rule.workId !== payment.workId) return false;
-      if (rule.category && rule.category.trim().toLocaleLowerCase("pt-BR") !== category) {
-        return false;
-      }
-      if (rule.tagId && !tagIds.has(rule.tagId)) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (b.priority !== a.priority) return b.priority - a.priority;
-      const specificity = (rule: ApprovalRuleCandidate) =>
-        Number(Boolean(rule.workId)) + Number(Boolean(rule.category)) + Number(Boolean(rule.tagId));
-      return specificity(b) - specificity(a);
-    })[0] ?? null;
 }
 
 type AllocationRuleCandidate = {

@@ -52,6 +52,7 @@ const ALL_ROLES: Role[] = [
   Role.ADMINISTRADOR,
 ];
 const MANAGEMENT: Role[] = [Role.GESTOR, Role.APROVADOR, Role.ADMINISTRADOR];
+const APPROVERS: Role[] = [Role.APROVADOR, Role.ADMINISTRADOR];
 const CRITICAL: Role[] = [Role.ADMINISTRADOR];
 
 export const tabRoles: Record<TabId, Role[]> = {
@@ -88,6 +89,14 @@ export function defaultTab(role: Role): TabId {
 /** Editar pagamentos, remarcar datas, mexer em registros financeiros. */
 export function canEditPayments(role: Role) {
   return MANAGEMENT.includes(role);
+}
+
+/**
+ * Aprovar pagamentos. Nao ha alcada: quem pode aprovar, aprova qualquer valor
+ * com uma unica aprovacao. O gestor opera pagamentos, mas nao os aprova.
+ */
+export function canApprovePayments(role: Role) {
+  return APPROVERS.includes(role);
 }
 
 

@@ -89,10 +89,10 @@ gerenciar usuários e permissões).
 
 ## Gestão financeira avançada
 
-- **Alçadas:** regras por faixa de valor, obra, categoria ou tag, com perfil mínimo,
-  quantidade de aprovadores e bloqueio de autoaprovação. Os padrões iniciais são
-  Gestor até R$ 5 mil, Coordenador acima desse valor e dupla aprovação de
-  Coordenador para a tag `Extraordinário`.
+- **Aprovação sem alçada:** qualquer aprovador ou administrador aprova qualquer
+  pagamento, de qualquer valor, com uma única aprovação. Não há regras por faixa
+  de valor, obra, categoria ou tag. Quem criou ou importou o pagamento não pode
+  aprová-lo.
 - **Indicadores:** gasto por fornecedor, evolução por obra (considerando rateios),
   crescimento de categorias, tempo médio de aprovação, remarcações, motivos de
   reprovação e entrega de notas no prazo.
